@@ -43,6 +43,16 @@ def salvar_config(dados):
         json.dump(dados, f, ensure_ascii=False, indent=2)
 
 
+MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+            "agosto", "setembro", "outubro", "novembro", "dezembro"]
+
+
+def data_por_extenso(cidade="", data=None):
+    d = data or datetime.date.today()
+    texto = f"{d.day} de {MESES_PT[d.month - 1]} de {d.year}"
+    return f"{cidade}, {texto}" if cidade else texto
+
+
 def copiar_imagem_para_projeto(caminho_origem, nome_destino):
     if not caminho_origem:
         return None
@@ -57,7 +67,8 @@ class CampoTexto:
 
     def __init__(self, pai, rotulo, valor_inicial="", largura=50):
         self.frame = tk.Frame(pai, bg=COR_CARTAO)
-        tk.Label(self.frame, text=rotulo, bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        tk.Label(self.frame, text=rotulo, bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL,
+                 justify="left").pack(anchor="w")
         self.var = tk.StringVar(value=valor_inicial)
         self.entry = tk.Entry(self.frame, textvariable=self.var, font=FONTE_PADRAO,
                                width=largura, relief="solid", bd=1,
@@ -79,7 +90,8 @@ class CampoImagem:
 
     def __init__(self, pai, rotulo, valor_inicial=None):
         self.frame = tk.Frame(pai, bg=COR_CARTAO)
-        tk.Label(self.frame, text=rotulo, bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        tk.Label(self.frame, text=rotulo, bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL,
+                 justify="left").pack(anchor="w")
         linha = tk.Frame(self.frame, bg=COR_CARTAO)
         linha.pack(anchor="w", fill="x", pady=(3, 10))
         self.caminho = valor_inicial
@@ -121,7 +133,7 @@ class CampoImagem:
 
 DOCUMENTOS_DISPONIVEIS = [
     ("memorando", "📄", "Memorando", True),
-    ("oficio", "📋", "Ofício", False),
+    ("oficio", "📋", "Ofício", True),
     ("declaracao", "📃", "Declaração Escolar", False),
     ("bolsa", "🎓", "Relatório do Bolsa Família", False),
     ("capa_livro", "📚", "Capa de Abertura de Livro", False),
@@ -168,7 +180,7 @@ class App(tk.Tk):
         self.container.columnconfigure(0, weight=1)
 
         self.paginas = {}
-        for nome in ("home", "escola", "memorando"):
+        for nome in ("home", "escola", "memorando", "oficio"):
             frame = tk.Frame(self.container, bg=COR_FUNDO)
             frame.grid(row=0, column=0, sticky="nsew")
             self.paginas[nome] = frame
@@ -176,6 +188,7 @@ class App(tk.Tk):
         self._montar_pagina_home()
         self._montar_pagina_escola()
         self._montar_pagina_memorando()
+        self._montar_pagina_oficio()
 
     def _ir_para(self, nome, primeira_vez=False):
         if nome == "home":
@@ -185,7 +198,18 @@ class App(tk.Tk):
                 self._banner_boas_vindas.pack(fill="x", pady=(0, 10), before=self._linha_voltar_escola)
             else:
                 self._banner_boas_vindas.pack_forget()
+        if nome == "oficio":
+            self._atualizar_data_oficio()
         self.paginas[nome].tkraise()
+
+    def _atualizar_data_oficio(self):
+        # So reescreve se o campo ainda estiver com o ultimo valor que o
+        # proprio app preencheu sozinho - se o usuario editou a mao, nao mexe.
+        if self.campo_data_oficio.get() == getattr(self, "_ultima_data_oficio_auto", None):
+            cidade = (self.config_escola.get("cidade") or "").strip()
+            novo_valor = data_por_extenso(cidade)
+            self.campo_data_oficio.set(novo_valor)
+            self._ultima_data_oficio_auto = novo_valor
 
     # ---------------- Início (escolher documento) ----------------
     def _montar_pagina_home(self):
@@ -293,6 +317,10 @@ class App(tk.Tk):
                                             c.get("secretaria", ""))
         self.campo_secretaria.pack(fill="x")
 
+        self.campo_cidade = CampoTexto(cartao, "Cidade (usada na data do Ofício, ex: Manaus)",
+                                        c.get("cidade", ""))
+        self.campo_cidade.pack(fill="x")
+
         self.campo_diretor_nome = CampoTexto(cartao, "Nome completo do(a) diretor(a)", c.get("diretor_nome", ""))
         self.campo_diretor_nome.pack(fill="x")
 
@@ -348,6 +376,7 @@ class App(tk.Tk):
         dados = {
             "nome_escola": self.campo_nome_escola.get(),
             "secretaria": self.campo_secretaria.get(),
+            "cidade": self.campo_cidade.get(),
             "diretor_nome": self.campo_diretor_nome.get(),
             "diretor_cargo": self.campo_diretor_cargo.get(),
             "diretor_portaria": self.campo_diretor_portaria.get(),
@@ -487,6 +516,149 @@ class App(tk.Tk):
 
         self.label_status_memo.config(text=f"Memorando gerado: {os.path.basename(caminho)}")
         if messagebox.askyesno("Memorando gerado", "Memorando gerado com sucesso. Deseja abrir o arquivo agora?"):
+            try:
+                os.startfile(caminho)
+            except Exception:
+                pass
+
+    # ---------------- Ofício ----------------
+    def _montar_pagina_oficio(self):
+        pagina = self.paginas["oficio"]
+
+        tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
+                  bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Novo ofício", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 16))
+        tk.Label(cartao,
+                 text="O ofício segue o padrão oficial: carta corrida, sem quadros (diferente do memorando).",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 16))
+
+        linha_numero = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_numero.pack(fill="x")
+        self.campo_numero_oficio = CampoTexto(linha_numero, "Número do ofício", largura=15)
+        self.campo_numero_oficio.pack(side="left", padx=(0, 20))
+        self.campo_ano_oficio = CampoTexto(linha_numero, "Ano", str(datetime.date.today().year), largura=10)
+        self.campo_ano_oficio.pack(side="left")
+
+        self.campo_protocolo_oficio = CampoTexto(
+            cartao, "Protocolo (ex: SIGED Nº 12345) - opcional, deixe em branco se não usar", largura=40)
+        self.campo_protocolo_oficio.pack(fill="x")
+
+        cidade = (self.config_escola.get("cidade") or "").strip()
+        self._ultima_data_oficio_auto = data_por_extenso(cidade)
+        self.campo_data_oficio = CampoTexto(
+            cartao, "Local e data", self._ultima_data_oficio_auto, largura=45)
+        self.campo_data_oficio.pack(fill="x")
+
+        self.campo_para_oficio = CampoTexto(cartao, "Para (nome do destinatário)", largura=60)
+        self.campo_para_oficio.pack(fill="x")
+
+        self.campo_cargo_destinatario = CampoTexto(
+            cartao, "Cargo/instituição do destinatário (opcional)", largura=60)
+        self.campo_cargo_destinatario.pack(fill="x")
+
+        self.campo_assunto_oficio = CampoTexto(cartao, "Assunto", largura=70)
+        self.campo_assunto_oficio.pack(fill="x")
+
+        self.campo_saudacao_oficio = CampoTexto(cartao, "Saudação", "Prezado(a) Senhor(a),", largura=40)
+        self.campo_saudacao_oficio.pack(fill="x")
+
+        tk.Label(cartao, text="Corpo do ofício (cada parágrafo em uma linha)",
+                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        self.texto_corpo_oficio = tk.Text(cartao, height=10, font=FONTE_PADRAO, relief="solid", bd=1,
+                                           highlightthickness=1, highlightbackground=COR_BORDA, wrap="word")
+        self.texto_corpo_oficio.pack(fill="x", pady=(3, 10))
+        self.texto_corpo_oficio.insert("1.0", "Vimos, por meio deste, ")
+
+        self.campo_fecho_oficio = CampoTexto(cartao, "Fecho", "Atenciosamente,", largura=30)
+        self.campo_fecho_oficio.pack(fill="x")
+
+        self.campo_assinado_por_oficio = CampoTexto(
+            cartao,
+            "Assinado por (opcional - só aparece se a escola não tiver cadastrado uma\n"
+            "imagem de assinatura em Dados da Escola)",
+            largura=50)
+        self.campo_assinado_por_oficio.pack(fill="x")
+
+        self.campo_cargo_assinado_por_oficio = CampoTexto(
+            cartao, "Cargo de quem assina (opcional)", largura=40)
+        self.campo_cargo_assinado_por_oficio.pack(fill="x")
+
+        btn_gerar = tk.Button(cartao, text="Gerar Ofício (.docx)", command=self._gerar_oficio,
+                               bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               relief="flat", padx=20, pady=10, cursor="hand2")
+        btn_gerar.pack(anchor="w", pady=(10, 0))
+
+        self.label_status_oficio = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
+        self.label_status_oficio.pack(anchor="w", pady=(8, 0))
+
+    def _gerar_oficio(self):
+        if not self.config_escola.get("nome_escola"):
+            messagebox.showwarning(
+                "Dados da escola pendentes",
+                "Preencha e salve os Dados da Escola antes de gerar um ofício.")
+            self._ir_para("escola")
+            return
+
+        numero = self.campo_numero_oficio.get()
+        para = self.campo_para_oficio.get()
+        assunto = self.campo_assunto_oficio.get()
+        corpo = self.texto_corpo_oficio.get("1.0", "end").strip()
+
+        if not numero or not para or not assunto or not corpo:
+            messagebox.showwarning(
+                "Campos obrigatórios", "Preencha ao menos Número, Para, Assunto e o corpo do ofício.")
+            return
+
+        dados_oficio = {
+            "numero": numero,
+            "ano": self.campo_ano_oficio.get(),
+            "protocolo": self.campo_protocolo_oficio.get(),
+            "data": self.campo_data_oficio.get(),
+            "para": para,
+            "cargo_destinatario": self.campo_cargo_destinatario.get(),
+            "assunto": assunto,
+            "saudacao": self.campo_saudacao_oficio.get(),
+            "corpo": corpo,
+            "fecho": self.campo_fecho_oficio.get(),
+            "assinado_por": self.campo_assinado_por_oficio.get(),
+            "cargo_assinado_por": self.campo_cargo_assinado_por_oficio.get(),
+        }
+
+        nome_sugerido = f"Oficio {numero}-{self.campo_ano_oficio.get()}.docx".replace("/", "-")
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar ofício",
+            initialfile=nome_sugerido,
+            defaultextension=".docx",
+            filetypes=[("Documento Word", "*.docx")])
+        if not caminho:
+            return
+
+        try:
+            documentos.gerar_oficio(self.config_escola, dados_oficio, caminho)
+        except Exception as e:
+            messagebox.showerror("Erro ao gerar ofício", str(e))
+            return
+
+        self.label_status_oficio.config(text=f"Ofício gerado: {os.path.basename(caminho)}")
+        if messagebox.askyesno("Ofício gerado", "Ofício gerado com sucesso. Deseja abrir o arquivo agora?"):
             try:
                 os.startfile(caminho)
             except Exception:

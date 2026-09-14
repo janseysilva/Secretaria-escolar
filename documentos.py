@@ -296,3 +296,141 @@ def gerar_memorando(dados_escola, dados_memo, caminho_saida):
 
     document.save(caminho_saida)
     return caminho_saida
+
+
+def _config_secao_oficio(document):
+    secao = document.sections[0]
+    secao.page_width = Cm(21)
+    secao.page_height = Cm(29.7)
+    secao.left_margin = Cm(3.0)
+    secao.right_margin = Cm(2.0)
+    secao.top_margin = Cm(2.0)
+    secao.bottom_margin = Cm(2.0)
+
+
+def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
+    """Gera um Ofício (.docx) no "padrão ofício" - uma carta corrida, sem
+    quadros/caixas (diferente do Memorando, que usa uma tabela com bordas).
+    Cabeçalho (logo + nome da escola), título, local e data por extenso,
+    destinatário, assunto, corpo e fecho/assinatura, igual ao modelo oficial
+    usado pela administração pública.
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, assinatura_path.
+    dados_oficio: dict com numero, ano, protocolo (texto livre, opcional),
+        data (ja formatada por extenso, ex: "14 de setembro de 2026"), para
+        (nome do destinatario), cargo_destinatario (opcional), assunto,
+        saudacao, corpo (texto com quebras de linha), fecho, assinado_por
+        (nome de quem assina - so aparece se a escola nao tem imagem de
+        assinatura cadastrada), cargo_assinado_por (opcional).
+    """
+    document = docx.Document()
+    _config_secao_oficio(document)
+    _set_fonte_padrao(document)
+
+    # --- Cabecalho: logo + nome da escola, centralizados tipo timbre ---
+    if dados_escola.get("logo_path"):
+        _imagem_centralizada(document, dados_escola["logo_path"], 2.5)
+
+    nome_escola = (dados_escola.get("nome_escola") or "").strip()
+    if nome_escola:
+        _paragrafo(document, nome_escola, negrito=True, tamanho=13,
+                   alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    secretaria = (dados_escola.get("secretaria") or "").strip()
+    if secretaria:
+        _paragrafo(document, secretaria, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+
+    # --- Titulo + protocolo ---
+    numero = (dados_oficio.get("numero") or "").strip()
+    ano = (dados_oficio.get("ano") or "").strip()
+    titulo = f"OFÍCIO Nº {numero}/{ano}" if numero else "OFÍCIO Nº"
+    if secretaria:
+        titulo += f" - {secretaria}"
+    _paragrafo(document, titulo, negrito=True, tamanho=TAM_TITULO)
+
+    protocolo = (dados_oficio.get("protocolo") or "").strip()
+    if protocolo:
+        _paragrafo(document, protocolo, negrito=True)
+
+    document.add_paragraph()
+
+    # --- Local e data, alinhado a direita ---
+    data = (dados_oficio.get("data") or "").strip()
+    if data:
+        _paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.RIGHT)
+
+    document.add_paragraph()
+
+    # --- Destinatario ---
+    para = (dados_oficio.get("para") or "").strip()
+    if para:
+        _paragrafo(document, f"A Sua Senhoria o(a) Senhor(a)")
+        _paragrafo(document, para, negrito=True)
+        cargo_dest = (dados_oficio.get("cargo_destinatario") or "").strip()
+        if cargo_dest:
+            _paragrafo(document, cargo_dest)
+
+    document.add_paragraph()
+
+    # --- Assunto ---
+    p_assunto = document.add_paragraph()
+    r1 = p_assunto.add_run("Assunto: ")
+    r1.bold = True
+    r1.font.name = FONTE
+    r1.font.size = Pt(TAM_NORMAL)
+    assunto = (dados_oficio.get("assunto") or "").strip()
+    if assunto:
+        r2 = p_assunto.add_run(assunto)
+        r2.font.name = FONTE
+        r2.font.size = Pt(TAM_NORMAL)
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    # --- Corpo ---
+    p_saud = document.add_paragraph()
+    p_saud.paragraph_format.first_line_indent = Cm(1.25)
+    run_saud = p_saud.add_run(dados_oficio.get("saudacao") or "Prezado(a) Senhor(a),")
+    run_saud.font.name = FONTE
+    run_saud.font.size = Pt(TAM_NORMAL)
+
+    document.add_paragraph()
+
+    corpo = dados_oficio.get("corpo") or ""
+    for linha in corpo.split("\n"):
+        linha = linha.strip()
+        if not linha:
+            continue
+        p = document.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        p.paragraph_format.first_line_indent = Cm(1.25)
+        run = p.add_run(linha)
+        run.font.name = FONTE
+        run.font.size = Pt(TAM_NORMAL)
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    # --- Fecho e assinatura ---
+    p_fecho = document.add_paragraph()
+    p_fecho.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_fecho = p_fecho.add_run(dados_oficio.get("fecho") or "Atenciosamente,")
+    run_fecho.font.name = FONTE
+    run_fecho.font.size = Pt(TAM_NORMAL)
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    if dados_escola.get("assinatura_path"):
+        _imagem_centralizada(document, dados_escola["assinatura_path"], 3.0)
+    else:
+        assinado_por = (dados_oficio.get("assinado_por") or "").strip()
+        if assinado_por:
+            _paragrafo(document, assinado_por, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+            cargo_assina = (dados_oficio.get("cargo_assinado_por") or "").strip()
+            if cargo_assina:
+                _paragrafo(document, cargo_assina, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.save(caminho_saida)
+    return caminho_saida
