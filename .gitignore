@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+dados_escola/
+EXEMPLO_gerado_pelo_app.docx
