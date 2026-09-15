@@ -204,7 +204,7 @@ DOCUMENTOS_DISPONIVEIS = [
     ("oficio", "📋", "Ofício", True),
     ("declaracao", "📃", "Declaração Escolar", True),
     ("bolsa", "🎓", "Relatório do Bolsa Família", False),
-    ("capa_livro", "📚", "Capa de Abertura de Livro", False),
+    ("capa_livro", "📚", "Capa de Abertura de Livro", True),
     ("ficha_matricula", "📝", "Ficha de Matrícula", False),
     ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", False),
     ("lista_frequencia", "🗓️", "Lista de Frequência Escolar", False),
@@ -248,7 +248,7 @@ class App(tk.Tk):
         self.container.columnconfigure(0, weight=1)
 
         self.paginas = {}
-        for nome in ("home", "escola", "memorando", "oficio", "declaracao"):
+        for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro"):
             frame = tk.Frame(self.container, bg=COR_FUNDO)
             frame.grid(row=0, column=0, sticky="nsew")
             self.paginas[nome] = frame
@@ -258,6 +258,7 @@ class App(tk.Tk):
         self._montar_pagina_memorando()
         self._montar_pagina_oficio()
         self._montar_pagina_declaracao()
+        self._montar_pagina_capa_livro()
 
     def _ir_para(self, nome, primeira_vez=False):
         if nome == "home":
@@ -271,6 +272,8 @@ class App(tk.Tk):
             self._atualizar_data_oficio()
         if nome == "declaracao":
             self._atualizar_data_declaracao()
+        if nome == "capa_livro":
+            self._atualizar_data_capa_livro()
         self.paginas[nome].tkraise()
 
     def _atualizar_data_oficio(self):
@@ -288,6 +291,13 @@ class App(tk.Tk):
             novo_valor = data_por_extenso(cidade)
             self.campo_data_declaracao.set(novo_valor)
             self._ultima_data_declaracao_auto = novo_valor
+
+    def _atualizar_data_capa_livro(self):
+        if self.campo_data_capa_livro.get() == getattr(self, "_ultima_data_capa_livro_auto", None):
+            cidade = (self.config_escola.get("cidade") or "").strip()
+            novo_valor = data_por_extenso(cidade)
+            self.campo_data_capa_livro.set(novo_valor)
+            self._ultima_data_capa_livro_auto = novo_valor
 
     # ---------------- Início (escolher documento) ----------------
     def _montar_pagina_home(self):
@@ -913,6 +923,121 @@ class App(tk.Tk):
 
         self.label_status_declaracao.config(text=f"Declaração gerada: {os.path.basename(caminho)}")
         if messagebox.askyesno("Declaração gerada", "Declaração gerada com sucesso. Deseja abrir o arquivo agora?"):
+            try:
+                os.startfile(caminho)
+            except Exception:
+                pass
+
+    # ---------------- Capa de Abertura de Livro ----------------
+    def _montar_pagina_capa_livro(self):
+        pagina = self.paginas["capa_livro"]
+
+        tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
+                  bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Novo termo de abertura de livro", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 4))
+        tk.Label(cartao,
+                 text="Serve pra abrir qualquer tipo de livro de registro da escola (atas,\n"
+                      "ponto, ocorrências etc.) - o texto é sempre o mesmo, só os dados abaixo mudam.",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 16))
+
+        self.campo_tipo_livro = CampoTexto(
+            cartao, "Tipo de livro (ex: Livro de Atas, Livro Ponto, Livro de Ocorrências)", largura=50)
+        self.campo_tipo_livro.pack(fill="x")
+
+        linha_livro = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_livro.pack(fill="x")
+        self.campo_numero_livro = CampoTexto(linha_livro, "Número do livro", largura=12)
+        self.campo_numero_livro.pack(side="left", padx=(0, 20))
+        self.campo_qtd_folhas = CampoTexto(linha_livro, "Quantidade de folhas numeradas", largura=15)
+        self.campo_qtd_folhas.pack(side="left")
+
+        self.campo_finalidade_livro = CampoTexto(
+            cartao, "Finalidade do livro (pra que ele vai servir)", largura=70)
+        self.campo_finalidade_livro.pack(fill="x")
+
+        cidade = (self.config_escola.get("cidade") or "").strip()
+        self._ultima_data_capa_livro_auto = data_por_extenso(cidade)
+        self.campo_data_capa_livro = CampoTexto(
+            cartao, "Local e data", self._ultima_data_capa_livro_auto, largura=45)
+        self.campo_data_capa_livro.pack(fill="x")
+
+        self.campo_responsavel_abertura = CampoTexto(
+            cartao, "Responsável pela abertura", self.config_escola.get("diretor_nome", ""), largura=50)
+        self.campo_responsavel_abertura.pack(fill="x")
+
+        self.campo_cargo_abertura = CampoTexto(
+            cartao, "Cargo", self.config_escola.get("diretor_cargo", ""), largura=30)
+        self.campo_cargo_abertura.pack(fill="x")
+
+        btn_gerar = tk.Button(cartao, text="Gerar Termo de Abertura (.docx)", command=self._gerar_capa_livro,
+                               bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               relief="flat", padx=20, pady=10, cursor="hand2")
+        btn_gerar.pack(anchor="w", pady=(10, 0))
+
+        self.label_status_capa_livro = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
+        self.label_status_capa_livro.pack(anchor="w", pady=(8, 0))
+
+    def _gerar_capa_livro(self):
+        if not self.config_escola.get("nome_escola"):
+            messagebox.showwarning(
+                "Dados da escola pendentes",
+                "Preencha e salve os Dados da Escola antes de gerar um termo de abertura.")
+            self._ir_para("escola")
+            return
+
+        tipo_livro = self.campo_tipo_livro.get()
+        finalidade = self.campo_finalidade_livro.get()
+        if not tipo_livro or not finalidade:
+            messagebox.showwarning(
+                "Campos obrigatórios", "Preencha ao menos o Tipo de livro e a Finalidade.")
+            return
+
+        dados_livro = {
+            "tipo_livro": tipo_livro,
+            "numero": self.campo_numero_livro.get(),
+            "qtd_folhas": self.campo_qtd_folhas.get(),
+            "finalidade": finalidade,
+            "data": self.campo_data_capa_livro.get(),
+            "responsavel_abertura": self.campo_responsavel_abertura.get(),
+            "cargo_abertura": self.campo_cargo_abertura.get(),
+        }
+
+        nome_sugerido = f"Termo de Abertura - {tipo_livro}.docx"
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar termo de abertura",
+            initialfile=nome_sugerido,
+            defaultextension=".docx",
+            filetypes=[("Documento Word", "*.docx")])
+        if not caminho:
+            return
+
+        try:
+            documentos.gerar_capa_livro(self.config_escola, dados_livro, caminho)
+        except Exception as e:
+            messagebox.showerror("Erro ao gerar termo de abertura", str(e))
+            return
+
+        self.label_status_capa_livro.config(text=f"Termo de abertura gerado: {os.path.basename(caminho)}")
+        if messagebox.askyesno(
+                "Termo de abertura gerado", "Termo de abertura gerado com sucesso. Deseja abrir o arquivo agora?"):
             try:
                 os.startfile(caminho)
             except Exception:

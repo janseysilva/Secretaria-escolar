@@ -6,6 +6,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL, WD_ROW_HEIGHT_RULE
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.table import _Cell
 
 FONTE = "Arial"
 TAM_NORMAL = 12
@@ -89,7 +90,12 @@ def _set_fonte_padrao(document):
 
 def _paragrafo(celula_ou_doc, texto="", negrito=False, tamanho=TAM_NORMAL,
                alinhamento=None, indice=0):
-    if hasattr(celula_ou_doc, "paragraphs") and hasattr(celula_ou_doc, "add_paragraph"):
+    # So reaproveita o primeiro paragrafo em branco quando o destino e uma
+    # CELULA de tabela recem-criada (que sempre vem com 1 paragrafo vazio) -
+    # nunca no documento inteiro, senao "document.paragraphs[0]" seria o
+    # primeiro paragrafo em branco de TODO o documento (nao o mais recente),
+    # fazendo o texto aparecer fora de ordem, antes de conteudo ja escrito.
+    if isinstance(celula_ou_doc, _Cell):
         if indice == 0 and celula_ou_doc.paragraphs and not celula_ou_doc.paragraphs[0].runs:
             p = celula_ou_doc.paragraphs[0]
         else:
@@ -149,21 +155,76 @@ def _linhas_cabecalho(dados_escola):
     return linhas
 
 
-def _linha_contato(dados_escola):
-    """Uma linha combinando endereco/telefone/email da escola, pra completar
-    o cabecalho do Memorando e do Oficio - a Declaracao ja mostra esses dados
-    numa tabela propria, entao nao usa esta linha (evita duplicar)."""
-    partes = []
+def _linhas_contato(dados_escola):
+    """Linhas de contato da escola - endereco numa linha, telefone e email
+    juntos na linha de baixo - pra completar o cabecalho do Memorando, do
+    Oficio e do Termo de Abertura (a Declaracao ja mostra esses dados numa
+    tabela propria, entao nao usa isso aqui, evita duplicar)."""
+    linhas = []
     endereco = (dados_escola.get("endereco") or "").strip()
+    if endereco:
+        linhas.append(endereco)
     telefone = (dados_escola.get("telefone") or "").strip()
     email = (dados_escola.get("email") or "").strip()
-    if endereco:
-        partes.append(endereco)
+    contato = []
     if telefone:
-        partes.append(f"Tel: {telefone}")
+        contato.append(f"Telefone: {telefone}")
     if email:
-        partes.append(email)
-    return " - ".join(partes)
+        contato.append(f"E-mail: {email}")
+    if contato:
+        linhas.append("   ".join(contato))
+    return linhas
+
+
+def _cabecalho_logo_e_secretaria(document, dados_escola):
+    """Logo a esquerda + nome da escola/secretaria a direita (maiusculo),
+    igual ao timbre oficial da SEMED - usado no Oficio, no Termo de
+    Abertura e na Declaracao. Retorna quantas linhas de texto foram
+    escritas, pra entrar no calculo de quanto empurrar o rodape pra baixo."""
+    logo_path = dados_escola.get("logo_path")
+    linhas_cab = _linhas_cabecalho(dados_escola) or ["Secretaria Municipal de Educação"]
+    if logo_path:
+        cab = document.add_table(rows=1, cols=2)
+        _remover_bordas_tabela(cab)
+        _definir_largura_colunas(cab, [2.5, 13.5])
+        cel_logo, cel_sec = cab.rows[0].cells
+        _imagem_centralizada(cel_logo, logo_path, 2.0)
+        cel_sec.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        for i, linha in enumerate(linhas_cab):
+            _paragrafo(cel_sec, linha.upper(), negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL,
+                       alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    else:
+        for i, linha in enumerate(linhas_cab):
+            _paragrafo(document, linha.upper(), negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL,
+                       alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    return len(linhas_cab)
+
+
+def _tabela_dados_escola(document, dados_escola):
+    """Tabela com bordas mostrando os dados de identificacao da escola
+    (CMEI/Escola Municipal, Endereco, Telefone, Email) - um por linha,
+    igual ao modelo oficial da SEMED. Usada no Oficio, no Termo de Abertura
+    e na Declaracao. Retorna quantas linhas a tabela ocupou."""
+    linhas_info = [
+        ("CMEI/Escola Municipal", dados_escola.get("nome_escola", "")),
+        ("Endereço", dados_escola.get("endereco", "")),
+        ("Telefone", dados_escola.get("telefone", "")),
+        ("Email", dados_escola.get("email", "")),
+    ]
+    tabela_info = document.add_table(rows=len(linhas_info), cols=1)
+    tabela_info.style = "Table Grid"
+    for linha_tabela, (rotulo, valor) in zip(tabela_info.rows, linhas_info):
+        celula = _celula_vazia(linha_tabela.cells[0])
+        celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        p = celula.paragraphs[0]
+        r1 = p.add_run(f"{rotulo}: ")
+        r1.bold = True
+        r1.font.name = FONTE
+        r1.font.size = Pt(TAM_NORMAL)
+        r2 = p.add_run(valor)
+        r2.font.name = FONTE
+        r2.font.size = Pt(TAM_NORMAL)
+    return len(linhas_info)
 
 
 def gerar_memorando(dados_escola, dados_memo, caminho_saida):
@@ -214,9 +275,8 @@ def gerar_memorando(dados_escola, dados_memo, caminho_saida):
 
     for i, linha in enumerate(_linhas_cabecalho(dados_escola)):
         _paragrafo(cel_titulo, linha, negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL)
-    linha_contato = _linha_contato(dados_escola)
-    if linha_contato:
-        _paragrafo(cel_titulo, linha_contato, tamanho=TAM_NORMAL - 1)
+    for linha in _linhas_contato(dados_escola):
+        _paragrafo(cel_titulo, linha, tamanho=TAM_NORMAL - 1)
 
     secretaria = (dados_escola.get("secretaria") or "").strip()
     numero = (dados_memo.get("numero") or "").strip()
@@ -373,19 +433,10 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
     _set_fonte_padrao(document)
     linhas_usadas = 0
 
-    # --- Cabecalho: logo + nome da escola, centralizados tipo timbre ---
-    if dados_escola.get("logo_path"):
-        _imagem_centralizada(document, dados_escola["logo_path"], 2.5)
-        linhas_usadas += 5  # estimativa da altura da imagem em "linhas"
-
-    for i, linha in enumerate(_linhas_cabecalho(dados_escola)):
-        _paragrafo(document, linha, negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL,
-                   alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
-        linhas_usadas += 1
-    linha_contato = _linha_contato(dados_escola)
-    if linha_contato:
-        _paragrafo(document, linha_contato, tamanho=TAM_NORMAL - 1, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
-        linhas_usadas += 1
+    # --- Cabecalho: logo + secretaria, e tabela com os dados da escola ---
+    linhas_usadas += _cabecalho_logo_e_secretaria(document, dados_escola) + 2
+    document.add_paragraph()
+    linhas_usadas += _tabela_dados_escola(document, dados_escola) + 1
     secretaria = (dados_escola.get("secretaria") or "").strip()
 
     document.add_paragraph()
@@ -577,7 +628,8 @@ def gerar_declaracao(dados_escola, dados_decl, caminho_saida):
         _imagem_centralizada(cel_logo, logo_path, 2.0)
         cel_sec.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         for i, linha in enumerate(linhas_cab):
-            _paragrafo(cel_sec, linha.upper(), negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL)
+            _paragrafo(cel_sec, linha.upper(), negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL,
+                       alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
     else:
         for i, linha in enumerate(linhas_cab):
             _paragrafo(document, linha.upper(), negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL)
@@ -721,6 +773,125 @@ def gerar_declaracao(dados_escola, dados_decl, caminho_saida):
     p_sec.runs[0].italic = True
     p_dir = _paragrafo(tabela_assinatura.cell(1, 1), "Diretor (a)", alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
     p_dir.runs[0].italic = True
+
+    document.save(caminho_saida)
+    return caminho_saida
+
+
+def gerar_capa_livro(dados_escola, dados_livro, caminho_saida):
+    """Gera um Termo de Abertura de Livro (.docx) - documento generico que
+    serve pra abrir qualquer tipo de livro de registro da escola (atas,
+    ponto, ocorrencias, etc.): o texto legal e sempre o mesmo, só os dados
+    do livro em si mudam conforme o que a pessoa preencher.
+
+    dados_escola: dict com nome_escola, secretaria, cidade, logo_path,
+        endereco, telefone, email, assinatura_path.
+    dados_livro: dict com tipo_livro (texto livre, ex: "Livro de Atas"),
+        numero (numero do livro), finalidade (pra que ele serve), qtd_folhas
+        (quantas folhas numeradas tem), data (local + data ja formatados por
+        extenso, ex: "Manaus, 15 de setembro de 2026"), responsavel_abertura
+        (nome de quem assina a abertura), cargo_abertura (cargo dessa
+        pessoa) - ambos digitados na tela deste documento, nao vem do
+        cadastro da escola (so pre-preenchidos com o diretor cadastrado).
+    """
+    document = docx.Document()
+    _config_secao_oficio(document)
+    _set_fonte_padrao(document)
+    linhas_usadas = 0
+
+    # --- Cabecalho: logo + secretaria, e tabela com os dados da escola ---
+    linhas_usadas += _cabecalho_logo_e_secretaria(document, dados_escola) + 2
+    document.add_paragraph()
+    linhas_usadas += _tabela_dados_escola(document, dados_escola) + 1
+
+    document.add_paragraph()
+    linhas_usadas += 1
+
+    # --- Titulo ---
+    _paragrafo(document, "TERMO DE ABERTURA", negrito=True, tamanho=TAM_TITULO,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    linhas_usadas += 1
+
+    document.add_paragraph()
+    document.add_paragraph()
+    linhas_usadas += 2
+
+    # --- Corpo: texto legal generico, com os dados do livro preenchidos ---
+    tipo_livro = (dados_livro.get("tipo_livro") or "").strip()
+    numero = (dados_livro.get("numero") or "").strip()
+    finalidade = (dados_livro.get("finalidade") or "").strip()
+    qtd_folhas = (dados_livro.get("qtd_folhas") or "").strip()
+    data = (dados_livro.get("data") or "").strip()
+    responsavel_abertura = (dados_livro.get("responsavel_abertura") or "").strip()
+    cargo_abertura = (dados_livro.get("cargo_abertura") or "").strip()
+
+    trecho_livro = f", denominado \"{tipo_livro}\"" if tipo_livro else ""
+    texto_corpo = (
+        "Na qualidade de responsável por esta unidade escolar, declaro aberto o "
+        f"presente livro nº {numero or '_' * 5}{trecho_livro}, destinado a "
+        f"{finalidade or '_' * 40}, contendo {qtd_folhas or '_' * 5} folhas numeradas "
+        "e rubricadas, que servirão para o fim aqui declarado. E, para que surta os "
+        "efeitos legais, firmo o presente Termo de Abertura."
+    )
+    p_corpo = document.add_paragraph()
+    p_corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p_corpo.paragraph_format.first_line_indent = Cm(1.25)
+    run_corpo = p_corpo.add_run(texto_corpo)
+    run_corpo.font.name = FONTE
+    run_corpo.font.size = Pt(TAM_NORMAL)
+    linhas_usadas += _estimar_linhas(texto_corpo)
+
+    # Empurra o bloco final (Responsavel/Cargo/Local e data) pra mais perto
+    # do fim da pagina, preenchendo com linhas em branco o espaco que sobrar
+    # - texto curto empurra bastante, texto longo empurra pouco ou nada.
+    linhas_reservadas_final = 15 if dados_escola.get("assinatura_path") else 11
+    linhas_disponiveis = ALTURA_UTIL_PAGINA_OFICIO_CM / ALTURA_LINHA_CM
+    linhas_preenchimento = int(linhas_disponiveis - linhas_usadas - linhas_reservadas_final)
+    linhas_preenchimento = max(2, min(linhas_preenchimento, 30))
+    for _ in range(linhas_preenchimento):
+        document.add_paragraph()
+
+    # --- Assinatura: imagem cadastrada (se houver) + Responsavel/Cargo/Data ---
+    # Todos os paragrafos daqui pra frente ficam marcados "manter com o
+    # proximo", pra sempre ficarem juntos - ou tudo cabe na pagina atual,
+    # ou tudo pula junto pra proxima.
+    paragrafos_bloco_final = []
+
+    if dados_escola.get("assinatura_path"):
+        paragrafos_bloco_final.append(_imagem_centralizada(document, dados_escola["assinatura_path"], 3.0))
+
+    p_resp = document.add_paragraph()
+    p_resp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r1 = p_resp.add_run("Responsável pela abertura: ")
+    r1.bold = True
+    r1.font.name = FONTE
+    r1.font.size = Pt(TAM_NORMAL)
+    r2 = p_resp.add_run(responsavel_abertura or "_" * 40)
+    r2.font.name = FONTE
+    r2.font.size = Pt(TAM_NORMAL)
+    paragrafos_bloco_final.append(p_resp)
+
+    p_cargo = document.add_paragraph()
+    p_cargo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r3 = p_cargo.add_run("Cargo: ")
+    r3.bold = True
+    r3.font.name = FONTE
+    r3.font.size = Pt(TAM_NORMAL)
+    r4 = p_cargo.add_run(cargo_abertura or "_" * 25)
+    r4.font.name = FONTE
+    r4.font.size = Pt(TAM_NORMAL)
+    paragrafos_bloco_final.append(p_cargo)
+
+    paragrafos_bloco_final.append(document.add_paragraph())
+    paragrafos_bloco_final.append(document.add_paragraph())
+
+    # --- Local e data, alinhado a direita, por ultimo ---
+    if data:
+        paragrafos_bloco_final.append(_paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.RIGHT))
+
+    for p in paragrafos_bloco_final[:-1]:
+        if p is not None:
+            p.paragraph_format.keep_with_next = True
 
     document.save(caminho_saida)
     return caminho_saida
