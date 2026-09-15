@@ -308,6 +308,9 @@ def _config_secao_oficio(document):
     secao.bottom_margin = Cm(2.0)
 
 
+ALTURA_UTIL_PAGINA_OFICIO_CM = 29.7 - 2.0 - 2.0  # altura da pagina menos margens topo/rodape
+
+
 def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
     """Gera um Ofício (.docx) no "padrão ofício" - uma carta corrida, sem
     quadros/caixas (diferente do Memorando, que usa uma tabela com bordas).
@@ -326,20 +329,25 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
     document = docx.Document()
     _config_secao_oficio(document)
     _set_fonte_padrao(document)
+    linhas_usadas = 0
 
     # --- Cabecalho: logo + nome da escola, centralizados tipo timbre ---
     if dados_escola.get("logo_path"):
         _imagem_centralizada(document, dados_escola["logo_path"], 2.5)
+        linhas_usadas += 5  # estimativa da altura da imagem em "linhas"
 
     nome_escola = (dados_escola.get("nome_escola") or "").strip()
     if nome_escola:
         _paragrafo(document, nome_escola, negrito=True, tamanho=13,
                    alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+        linhas_usadas += 1
     secretaria = (dados_escola.get("secretaria") or "").strip()
     if secretaria:
         _paragrafo(document, secretaria, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+        linhas_usadas += 1
 
     document.add_paragraph()
+    linhas_usadas += 1
 
     # --- Titulo + protocolo ---
     numero = (dados_oficio.get("numero") or "").strip()
@@ -348,30 +356,29 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
     if secretaria:
         titulo += f" - {secretaria}"
     _paragrafo(document, titulo, negrito=True, tamanho=TAM_TITULO)
+    linhas_usadas += 1
 
     protocolo = (dados_oficio.get("protocolo") or "").strip()
     if protocolo:
         _paragrafo(document, protocolo, negrito=True)
+        linhas_usadas += 1
 
     document.add_paragraph()
-
-    # --- Local e data, alinhado a direita ---
-    data = (dados_oficio.get("data") or "").strip()
-    if data:
-        _paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.RIGHT)
-
-    document.add_paragraph()
+    linhas_usadas += 1
 
     # --- Destinatario ---
     para = (dados_oficio.get("para") or "").strip()
     if para:
         _paragrafo(document, f"A Sua Senhoria o(a) Senhor(a)")
         _paragrafo(document, para, negrito=True)
+        linhas_usadas += 2
         cargo_dest = (dados_oficio.get("cargo_destinatario") or "").strip()
         if cargo_dest:
             _paragrafo(document, cargo_dest)
+            linhas_usadas += 1
 
     document.add_paragraph()
+    linhas_usadas += 1
 
     # --- Assunto ---
     p_assunto = document.add_paragraph()
@@ -384,9 +391,11 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
         r2 = p_assunto.add_run(assunto)
         r2.font.name = FONTE
         r2.font.size = Pt(TAM_NORMAL)
+    linhas_usadas += _estimar_linhas("Assunto: " + assunto)
 
     document.add_paragraph()
     document.add_paragraph()
+    linhas_usadas += 2
 
     # --- Corpo ---
     p_saud = document.add_paragraph()
@@ -394,8 +403,10 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
     run_saud = p_saud.add_run(dados_oficio.get("saudacao") or "Prezado(a) Senhor(a),")
     run_saud.font.name = FONTE
     run_saud.font.size = Pt(TAM_NORMAL)
+    linhas_usadas += 1
 
     document.add_paragraph()
+    linhas_usadas += 1
 
     corpo = dados_oficio.get("corpo") or ""
     for linha in corpo.split("\n"):
@@ -408,29 +419,57 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
         run = p.add_run(linha)
         run.font.name = FONTE
         run.font.size = Pt(TAM_NORMAL)
+        linhas_usadas += _estimar_linhas(linha)
 
-    document.add_paragraph()
-    document.add_paragraph()
+    # Empurra o fecho/assinatura pra mais perto do fim da pagina, preenchendo
+    # com linhas em branco o espaco que sobrar - textos curtos empurram
+    # bastante, textos longos empurram pouco ou nada.
+    linhas_reservadas_assinatura = 15 if dados_escola.get("assinatura_path") else 11
+    linhas_disponiveis = ALTURA_UTIL_PAGINA_OFICIO_CM / ALTURA_LINHA_CM
+    linhas_preenchimento = int(linhas_disponiveis - linhas_usadas - linhas_reservadas_assinatura)
+    linhas_preenchimento = max(2, min(linhas_preenchimento, 30))
+    for _ in range(linhas_preenchimento):
+        document.add_paragraph()
 
     # --- Fecho e assinatura ---
+    # Todos os paragrafos daqui pra frente (fecho, assinatura, data) ficam
+    # marcados "manter com o proximo", pra sempre ficarem juntos - ou tudo
+    # cabe na pagina atual, ou tudo pula junto pra proxima (nunca fica so a
+    # data sozinha numa pagina em branco).
+    paragrafos_bloco_final = []
+
     p_fecho = document.add_paragraph()
     p_fecho.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_fecho = p_fecho.add_run(dados_oficio.get("fecho") or "Atenciosamente,")
     run_fecho.font.name = FONTE
     run_fecho.font.size = Pt(TAM_NORMAL)
+    paragrafos_bloco_final.append(p_fecho)
 
-    document.add_paragraph()
-    document.add_paragraph()
+    paragrafos_bloco_final.append(document.add_paragraph())
 
     if dados_escola.get("assinatura_path"):
-        _imagem_centralizada(document, dados_escola["assinatura_path"], 3.0)
+        paragrafos_bloco_final.append(_imagem_centralizada(document, dados_escola["assinatura_path"], 3.0))
     else:
         assinado_por = (dados_oficio.get("assinado_por") or "").strip()
         if assinado_por:
-            _paragrafo(document, assinado_por, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+            paragrafos_bloco_final.append(
+                _paragrafo(document, assinado_por, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER))
             cargo_assina = (dados_oficio.get("cargo_assinado_por") or "").strip()
             if cargo_assina:
-                _paragrafo(document, cargo_assina, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+                paragrafos_bloco_final.append(
+                    _paragrafo(document, cargo_assina, alinhamento=WD_ALIGN_PARAGRAPH.CENTER))
+
+    paragrafos_bloco_final.append(document.add_paragraph())
+    paragrafos_bloco_final.append(document.add_paragraph())
+
+    # --- Local e data, no final de tudo, alinhado a direita ---
+    data = (dados_oficio.get("data") or "").strip()
+    if data:
+        paragrafos_bloco_final.append(_paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.RIGHT))
+
+    for p in paragrafos_bloco_final[:-1]:
+        if p is not None:
+            p.paragraph_format.keep_with_next = True
 
     document.save(caminho_saida)
     return caminho_saida
