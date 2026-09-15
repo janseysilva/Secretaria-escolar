@@ -124,11 +124,46 @@ def _imagem_centralizada(destino, caminho_imagem, largura_cm):
 
 
 def _celula_vazia(celula):
-    """Limpa o paragrafo padrao vazio que toda celula nova ja vem com."""
-    if celula.paragraphs and not celula.paragraphs[0].runs:
-        celula.paragraphs[0].text = ""
+    """Centraliza verticalmente uma celula recem-criada (ja vem sem
+    conteudo, nao precisa limpar nada - so ajustar o alinhamento).
+
+    Nota: NAO fazer `paragrafo.text = ""` aqui - no python-docx 1.2.0 isso
+    cria um run vazio de verdade, o que faz _paragrafo() achar que a celula
+    ja tem conteudo e pular pra um paragrafo novo, deixando uma linha em
+    branco indesejada antes do primeiro texto real."""
     celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     return celula
+
+
+def _linhas_cabecalho(dados_escola):
+    """Linhas de texto do cabecalho que aparece abaixo do brasao/logo - nome
+    da escola e secretaria/orgao superior, iguais no Memorando, no Oficio e
+    na Declaracao."""
+    linhas = []
+    nome_escola = (dados_escola.get("nome_escola") or "").strip()
+    if nome_escola:
+        linhas.append(nome_escola)
+    secretaria = (dados_escola.get("secretaria") or "").strip()
+    if secretaria:
+        linhas.append(secretaria)
+    return linhas
+
+
+def _linha_contato(dados_escola):
+    """Uma linha combinando endereco/telefone/email da escola, pra completar
+    o cabecalho do Memorando e do Oficio - a Declaracao ja mostra esses dados
+    numa tabela propria, entao nao usa esta linha (evita duplicar)."""
+    partes = []
+    endereco = (dados_escola.get("endereco") or "").strip()
+    telefone = (dados_escola.get("telefone") or "").strip()
+    email = (dados_escola.get("email") or "").strip()
+    if endereco:
+        partes.append(endereco)
+    if telefone:
+        partes.append(f"Tel: {telefone}")
+    if email:
+        partes.append(email)
+    return " - ".join(partes)
 
 
 def gerar_memorando(dados_escola, dados_memo, caminho_saida):
@@ -140,8 +175,8 @@ def gerar_memorando(dados_escola, dados_memo, caminho_saida):
     segunda Data ficam em branco no documento, para preencher a mao. O resto
     ja vem preenchido pelo que o usuario digitou/cadastrou.
 
-    dados_escola: dict com nome_escola, secretaria, diretor_nome, diretor_cargo,
-        diretor_portaria, logo_path, assinatura_path.
+    dados_escola: dict com nome_escola, secretaria, diretor_nome,
+        diretor_cargo, diretor_portaria, logo_path, assinatura_path.
     dados_memo: dict com numero, ano, para, assunto, saudacao, corpo (texto
         com quebras de linha), fecho, assinado_por (nome de quem assina -
         so aparece na caixa ASSINATURA quando a escola nao tem uma imagem de
@@ -176,6 +211,12 @@ def gerar_memorando(dados_escola, dados_memo, caminho_saida):
 
     if dados_escola.get("logo_path"):
         _imagem_centralizada(cel_logo, dados_escola["logo_path"], 2.8)
+
+    for i, linha in enumerate(_linhas_cabecalho(dados_escola)):
+        _paragrafo(cel_titulo, linha, negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL)
+    linha_contato = _linha_contato(dados_escola)
+    if linha_contato:
+        _paragrafo(cel_titulo, linha_contato, tamanho=TAM_NORMAL - 1)
 
     secretaria = (dados_escola.get("secretaria") or "").strip()
     numero = (dados_memo.get("numero") or "").strip()
@@ -318,7 +359,8 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
     destinatário, assunto, corpo e fecho/assinatura, igual ao modelo oficial
     usado pela administração pública.
 
-    dados_escola: dict com nome_escola, secretaria, logo_path, assinatura_path.
+    dados_escola: dict com nome_escola, secretaria, logo_path,
+        assinatura_path.
     dados_oficio: dict com numero, ano, protocolo (texto livre, opcional),
         data (ja formatada por extenso, ex: "14 de setembro de 2026"), para
         (nome do destinatario), cargo_destinatario (opcional), assunto,
@@ -336,15 +378,15 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
         _imagem_centralizada(document, dados_escola["logo_path"], 2.5)
         linhas_usadas += 5  # estimativa da altura da imagem em "linhas"
 
-    nome_escola = (dados_escola.get("nome_escola") or "").strip()
-    if nome_escola:
-        _paragrafo(document, nome_escola, negrito=True, tamanho=13,
+    for i, linha in enumerate(_linhas_cabecalho(dados_escola)):
+        _paragrafo(document, linha, negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL,
                    alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
         linhas_usadas += 1
-    secretaria = (dados_escola.get("secretaria") or "").strip()
-    if secretaria:
-        _paragrafo(document, secretaria, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    linha_contato = _linha_contato(dados_escola)
+    if linha_contato:
+        _paragrafo(document, linha_contato, tamanho=TAM_NORMAL - 1, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
         linhas_usadas += 1
+    secretaria = (dados_escola.get("secretaria") or "").strip()
 
     document.add_paragraph()
     linhas_usadas += 1
@@ -470,6 +512,215 @@ def gerar_oficio(dados_escola, dados_oficio, caminho_saida):
     for p in paragrafos_bloco_final[:-1]:
         if p is not None:
             p.paragraph_format.keep_with_next = True
+
+    document.save(caminho_saida)
+    return caminho_saida
+
+
+def _caixa(marcado):
+    """Retorna a caixinha de opcao marcada ou vazia, ex: (X) / ( )."""
+    return "(X)" if marcado else "( )"
+
+
+def _linha_com_borda_inferior(destino):
+    """Cria uma 'linha' (pra assinatura/preenchimento a mao) usando uma
+    borda inferior no paragrafo - mais confiavel que espacos sublinhados,
+    que podem ser cortados na conversao pra PDF."""
+    if destino.paragraphs and not destino.paragraphs[0].runs:
+        p = destino.paragraphs[0]
+    else:
+        p = destino.add_paragraph()
+    pPr = p._p.get_or_add_pPr()
+    pBdr = OxmlElement("w:pBdr")
+    borda = OxmlElement("w:bottom")
+    borda.set(qn("w:val"), "single")
+    borda.set(qn("w:sz"), "6")
+    borda.set(qn("w:space"), "1")
+    borda.set(qn("w:color"), "000000")
+    pBdr.append(borda)
+    pPr.append(pBdr)
+    return p
+
+
+def gerar_declaracao(dados_escola, dados_decl, caminho_saida):
+    """Gera uma Declaração Escolar (.docx), no formato de formulário usado
+    pela SEMED Manaus (tabela com os dados da escola + texto com opções
+    de caixinha marcadas automaticamente conforme o que foi escolhido no
+    app, ao contrário de deixar tudo em branco pra marcar a mao).
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
+        telefone, email.
+    dados_decl: dict com aluno, codigo_sigeam, codigo_tipo ("SIGEAM"/
+        "Matrícula"/rotulo customizado), situacao_matricula
+        ("esta" ou "foi"), ano_letivo, situacao_curso ("cursa" ou "cursou"),
+        serie (texto livre), turma, turno ("matutino"/"vespertino"/
+        "noturno"/"intermediario"),
+        finalidade ("trabalho"/"transferencia"/"sinetram"/"bolsa_familia"/
+        "outros"), finalidade_frequencia (numero, so p/ bolsa_familia),
+        finalidade_outros (texto, so p/ outros), status_aluno
+        ("promovido"/"retido"/"desistente"/"progressao_parcial"/"cursando"),
+        status_desistente_data (so p/ desistente), obs (opcional), data
+        (ja formatada por extenso).
+    """
+    document = docx.Document()
+    _config_secao_oficio(document)
+    _set_fonte_padrao(document)
+
+    # --- Cabecalho: logo + nome da escola/secretaria, lado a lado ---
+    logo_path = dados_escola.get("logo_path")
+    linhas_cab = _linhas_cabecalho(dados_escola) or ["Secretaria Municipal de Educação"]
+    if logo_path:
+        cab = document.add_table(rows=1, cols=2)
+        _remover_bordas_tabela(cab)
+        _definir_largura_colunas(cab, [2.5, 13.5])
+        cel_logo, cel_sec = cab.rows[0].cells
+        _imagem_centralizada(cel_logo, logo_path, 2.0)
+        cel_sec.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        for i, linha in enumerate(linhas_cab):
+            _paragrafo(cel_sec, linha.upper(), negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL)
+    else:
+        for i, linha in enumerate(linhas_cab):
+            _paragrafo(document, linha.upper(), negrito=(i == 0), tamanho=13 if i == 0 else TAM_NORMAL)
+
+    document.add_paragraph()
+
+    # --- Tabela com os dados da escola ---
+    linhas_info = [
+        ("CMEI/Escola Municipal", dados_escola.get("nome_escola", "")),
+        ("Endereço", dados_escola.get("endereco", "")),
+        ("Telefone", dados_escola.get("telefone", "")),
+        ("Email", dados_escola.get("email", "")),
+    ]
+    tabela_info = document.add_table(rows=len(linhas_info), cols=1)
+    tabela_info.style = "Table Grid"
+    for linha_tabela, (rotulo, valor) in zip(tabela_info.rows, linhas_info):
+        celula = _celula_vazia(linha_tabela.cells[0])
+        celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        p = celula.paragraphs[0]
+        r1 = p.add_run(f"{rotulo}: ")
+        r1.bold = True
+        r1.font.name = FONTE
+        r1.font.size = Pt(TAM_NORMAL)
+        r2 = p.add_run(valor)
+        r2.font.name = FONTE
+        r2.font.size = Pt(TAM_NORMAL)
+
+    document.add_paragraph()
+
+    # --- Titulo ---
+    _paragrafo(document, "DECLARAÇÃO", negrito=True, tamanho=TAM_TITULO, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+
+    # --- Corpo: texto corrido com as opcoes marcadas ---
+    aluno = (dados_decl.get("aluno") or "").strip()
+    codigo_sigeam = (dados_decl.get("codigo_sigeam") or "").strip()
+    codigo_tipo = (dados_decl.get("codigo_tipo") or "SIGEAM").strip()
+    ano_letivo = (dados_decl.get("ano_letivo") or "").strip()
+    turma = (dados_decl.get("turma") or "").strip()
+    situacao_matricula = dados_decl.get("situacao_matricula") or "esta"
+    situacao_curso = dados_decl.get("situacao_curso") or "cursa"
+    serie = (dados_decl.get("serie") or "").strip()
+    turno = dados_decl.get("turno") or ""
+
+    p_corpo = document.add_paragraph()
+    p_corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    texto_corpo = (
+        f"Declaramos para os devidos fins que o(a) aluno(a), {aluno or '_' * 45}, "
+        f"sob o código ({codigo_tipo}) {codigo_sigeam or '_' * 15}, "
+        f"{_caixa(situacao_matricula == 'esta')} está {_caixa(situacao_matricula == 'foi')} foi "
+        f"matriculado(a) neste estabelecimento de ensino no ano letivo de {ano_letivo or '20____'}, onde "
+        f"{_caixa(situacao_curso == 'cursa')} cursa {_caixa(situacao_curso == 'cursou')} cursou a série "
+        f"{serie or '_' * 20}, na turma "
+        f"{turma or '______'}, turno {_caixa(turno == 'matutino')} matutino {_caixa(turno == 'vespertino')} "
+        f"vespertino {_caixa(turno == 'noturno')} noturno {_caixa(turno == 'intermediario')} intermediário, "
+        f"conforme especificações abaixo:"
+    )
+    run_corpo = p_corpo.add_run(texto_corpo)
+    run_corpo.font.name = FONTE
+    run_corpo.font.size = Pt(TAM_NORMAL)
+
+    document.add_paragraph()
+
+    # --- Duas colunas: finalidade da declaracao + status do aluno ---
+    finalidade = dados_decl.get("finalidade") or ""
+    freq = (dados_decl.get("finalidade_frequencia") or "").strip()
+    outros_texto = (dados_decl.get("finalidade_outros") or "").strip()
+    status = dados_decl.get("status_aluno") or ""
+    status_data = (dados_decl.get("status_desistente_data") or "").strip()
+
+    tabela_opcoes = document.add_table(rows=6, cols=2)
+    _remover_bordas_tabela(tabela_opcoes)
+    _definir_largura_colunas(tabela_opcoes, [8.0, 8.0])
+
+    _paragrafo(tabela_opcoes.cell(0, 0), "Declarações para fins de:", negrito=True)
+    _paragrafo(tabela_opcoes.cell(1, 0), f"{_caixa(finalidade == 'trabalho')} Trabalho")
+    _paragrafo(tabela_opcoes.cell(2, 0), f"{_caixa(finalidade == 'transferencia')} Transferência")
+    _paragrafo(tabela_opcoes.cell(3, 0), f"{_caixa(finalidade == 'sinetram')} Sinetram")
+    _paragrafo(tabela_opcoes.cell(4, 0),
+               f"{_caixa(finalidade == 'bolsa_familia')} Bolsa Família / Frequência {freq or '_____'}")
+    _paragrafo(tabela_opcoes.cell(5, 0), f"{_caixa(finalidade == 'outros')} Outros {outros_texto or '_' * 20}")
+
+    _paragrafo(tabela_opcoes.cell(0, 1), "Status do Aluno:", negrito=True)
+    _paragrafo(tabela_opcoes.cell(1, 1), f"{_caixa(status == 'promovido')} Promovido (a)")
+    _paragrafo(tabela_opcoes.cell(2, 1), f"{_caixa(status == 'retido')} Retido (a)")
+    _paragrafo(tabela_opcoes.cell(3, 1),
+               f"{_caixa(status == 'desistente')} Desistente a partir de {status_data or '__/__/__'}")
+    _paragrafo(tabela_opcoes.cell(4, 1), f"{_caixa(status == 'progressao_parcial')} Progressão Parcial")
+    _paragrafo(tabela_opcoes.cell(5, 1), f"{_caixa(status == 'cursando')} Cursando")
+
+    # --- OBS ---
+    obs = (dados_decl.get("obs") or "").strip()
+    p_obs = document.add_paragraph()
+    r1 = p_obs.add_run("OBS: ")
+    r1.bold = True
+    r1.font.name = FONTE
+    r1.font.size = Pt(TAM_NORMAL)
+    if obs:
+        r2 = p_obs.add_run(obs)
+        r2.font.name = FONTE
+        r2.font.size = Pt(TAM_NORMAL)
+    else:
+        _linha_com_borda_inferior(document)
+
+    document.add_paragraph()
+
+    # --- Nota legal fixa ---
+    p_nota = document.add_paragraph()
+    run_nota = p_nota.add_run(
+        "Conforme o parágrafo único do art. 141 do Regimento Geral das Escolas da Rede Municipal, "
+        "esta declaração tem validade de 30 dias a contar da data de sua expedição.")
+    run_nota.font.name = FONTE
+    run_nota.font.size = Pt(TAM_NORMAL - 1)
+    run_nota.italic = True
+
+    document.add_paragraph()
+
+    # --- Data ---
+    data = (dados_decl.get("data") or "").strip()
+    if data:
+        p_data = document.add_paragraph()
+        run_data = p_data.add_run(f"{data}.")
+        run_data.font.name = FONTE
+        run_data.font.size = Pt(TAM_NORMAL)
+        run_data.bold = True
+        run_data.italic = True
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    # --- Assinaturas: Secretario(a) e Diretor(a), lado a lado ---
+    tabela_assinatura = document.add_table(rows=2, cols=2)
+    _remover_bordas_tabela(tabela_assinatura)
+    _definir_largura_colunas(tabela_assinatura, [8.0, 8.0])
+
+    _linha_com_borda_inferior(tabela_assinatura.cell(0, 0))
+    _linha_com_borda_inferior(tabela_assinatura.cell(0, 1))
+
+    p_sec = _paragrafo(tabela_assinatura.cell(1, 0), "Secretário (a)", alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_sec.runs[0].italic = True
+    p_dir = _paragrafo(tabela_assinatura.cell(1, 1), "Diretor (a)", alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_dir.runs[0].italic = True
 
     document.save(caminho_saida)
     return caminho_saida
