@@ -19,9 +19,9 @@ os.makedirs(PASTA_IMAGENS, exist_ok=True)
 
 COR_FUNDO = "#EEF1F7"
 COR_CARTAO = "#FFFFFF"
-COR_AZUL = "#4472C4"
-COR_AZUL_ESCURO = "#2F528F"
-COR_AZUL_CLARO = "#5B8AD9"
+COR_AZUL = "#1D9E75"
+COR_AZUL_ESCURO = "#0F6E56"
+COR_AZUL_CLARO = "#5DCAA5"
 COR_TEXTO = "#1F2937"
 COR_TEXTO_FRACO = "#6B7280"
 COR_BORDA = "#D6DCE8"
@@ -167,11 +167,13 @@ class CampoImagem:
                                        fg=COR_TEXTO_FRACO, font=FONTE_PADRAO)
         self.label_arquivo.pack(side="left", padx=(0, 10))
         btn = tk.Button(linha, text="Escolher imagem...", command=self._escolher,
-                         bg="#E8ECF4", fg=COR_AZUL_ESCURO, font=("Segoe UI", 9),
+                         bg="#E3F2ED", fg=COR_AZUL_ESCURO, font=("Segoe UI", 9),
+                         activebackground="#CFEAE0", activeforeground=COR_AZUL_ESCURO,
                          relief="flat", padx=10, pady=3, cursor="hand2")
         btn.pack(side="left", padx=(0, 6))
         btn_remover = tk.Button(linha, text="Remover", command=self._remover,
                                  bg="#FBE5E5", fg="#B3261E", font=("Segoe UI", 9),
+                                 activebackground="#F5C4C4", activeforeground="#B3261E",
                                  relief="flat", padx=10, pady=3, cursor="hand2")
         btn_remover.pack(side="left")
 
@@ -200,15 +202,37 @@ class CampoImagem:
 
 
 DOCUMENTOS_DISPONIVEIS = [
-    ("memorando", "📄", "Memorando", True),
-    ("oficio", "📋", "Ofício", True),
-    ("declaracao", "📃", "Declaração Escolar", True),
-    ("bolsa", "🎓", "Relatório do Bolsa Família", False),
-    ("capa_livro", "📚", "Capa de Abertura de Livro", True),
-    ("ficha_matricula", "📝", "Ficha de Matrícula", True),
-    ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", False),
-    ("lista_frequencia", "🗓️", "Lista de Frequência Escolar", False),
+    ("memorando", "📄", "Memorando", True, "#185FA5"),
+    ("oficio", "📋", "Ofício", True, "#0F6E56"),
+    ("declaracao", "📃", "Declaração Escolar", True, "#534AB7"),
+    ("bolsa", "🎓", "Relatório do Bolsa Família", False, "#854F0B"),
+    ("capa_livro", "📚", "Capa de Abertura de Livro", True, "#993C1D"),
+    ("ficha_matricula", "📝", "Ficha de Matrícula", True, "#993556"),
+    ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", False, "#3B6D11"),
+    ("lista_frequencia", "🗓️", "Lista de Frequência Escolar", False, "#0C447C"),
 ]
+
+
+def _clarear_cor(hex_cor, fator=0.15):
+    """Clareia uma cor hex misturando com branco - usado pro efeito de
+    hover nos cartoes coloridos (fill fica um pouco mais claro)."""
+    hex_cor = hex_cor.lstrip("#")
+    r, g, b = int(hex_cor[0:2], 16), int(hex_cor[2:4], 16), int(hex_cor[4:6], 16)
+    r = int(r + (255 - r) * fator)
+    g = int(g + (255 - g) * fator)
+    b = int(b + (255 - b) * fator)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _retangulo_arredondado(canvas, x1, y1, x2, y2, raio=12, **kwargs):
+    """Desenha um retangulo com cantos arredondados num Canvas - tkinter
+    nao tem isso nativamente, esse e o jeito padrao (poligono suavizado)."""
+    pontos = [
+        x1 + raio, y1, x2 - raio, y1, x2, y1, x2, y1 + raio,
+        x2, y2 - raio, x2, y2, x2 - raio, y2, x1 + raio, y2,
+        x1, y2, x1, y2 - raio, x1, y1 + raio, x1, y1,
+    ]
+    return canvas.create_polygon(pontos, smooth=True, **kwargs)
 
 
 class App(tk.Tk):
@@ -235,9 +259,9 @@ class App(tk.Tk):
         tk.Label(faixa, text="Secretaria Escolar", bg=COR_AZUL_ESCURO, fg="white",
                  font=("Segoe UI", 15, "bold")).pack(side="left", padx=20)
         tk.Label(faixa, text="Documentos oficiais gerados na hora", bg=COR_AZUL_ESCURO,
-                 fg="#C7D5EE", font=("Segoe UI", 9)).pack(side="left")
+                 fg="#BFE6D9", font=("Segoe UI", 9)).pack(side="left")
         tk.Button(faixa, text="⚙ Dados da escola", command=lambda: self._ir_para("escola"),
-                  bg=COR_AZUL_ESCURO, fg="#C7D5EE", font=("Segoe UI", 9), relief="flat",
+                  bg=COR_AZUL_ESCURO, fg="#BFE6D9", font=("Segoe UI", 9), relief="flat",
                   activebackground=COR_AZUL, activeforeground="white",
                   cursor="hand2", bd=0).pack(side="right", padx=20)
 
@@ -326,34 +350,56 @@ class App(tk.Tk):
 
         grade = tk.Frame(conteudo, bg=COR_FUNDO)
         grade.pack(fill="both", expand=True)
-        for col in range(2):
+        colunas = 3
+        for col in range(colunas):
             grade.columnconfigure(col, weight=1)
 
-        for i, (chave, emoji, titulo, disponivel) in enumerate(DOCUMENTOS_DISPONIVEIS):
-            linha, col = divmod(i, 2)
-            self._criar_cartao_documento(grade, chave, emoji, titulo, disponivel).grid(
-                row=linha, column=col, sticky="nsew", padx=8, pady=8)
+        for i, (chave, emoji, titulo, disponivel, cor) in enumerate(DOCUMENTOS_DISPONIVEIS):
+            linha, col = divmod(i, colunas)
+            self._criar_cartao_documento(grade, chave, emoji, titulo, disponivel, cor).grid(
+                row=linha, column=col, sticky="nsew", padx=6, pady=6)
 
-    def _criar_cartao_documento(self, pai, chave, emoji, titulo, disponivel):
-        cartao = tk.Frame(pai, bg=COR_CARTAO, padx=18, pady=16, cursor="hand2" if disponivel else "arrow")
-        tk.Label(cartao, text=emoji, bg=COR_CARTAO, font=("Segoe UI", 26)).pack(anchor="w")
-        tk.Label(cartao, text=titulo, bg=COR_CARTAO,
-                 fg=COR_TEXTO if disponivel else COR_TEXTO_FRACO,
-                 font=("Segoe UI", 11, "bold"), wraplength=280, justify="left").pack(anchor="w", pady=(6, 0))
-        tk.Label(cartao, text="Disponível" if disponivel else "Em breve", bg=COR_CARTAO,
-                 fg=COR_VERDE if disponivel else COR_TEXTO_FRACO, font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
+    def _criar_cartao_documento(self, pai, chave, emoji, titulo, disponivel, cor):
+        cor_fundo = cor if disponivel else "#C9C7BE"
+        cor_hover = _clarear_cor(cor_fundo, 0.12)
+        cor_texto = "white" if disponivel else "#403F3C"
+        cor_status = "white" if disponivel else "#5F5E5A"
+
+        canvas = tk.Canvas(pai, bg=COR_FUNDO, highlightthickness=0, height=128,
+                            cursor="hand2" if disponivel else "arrow")
+        estado = {"rect": None}
+
+        def redesenhar(_e=None):
+            canvas.delete("all")
+            w = max(canvas.winfo_width(), 10)
+            h = max(canvas.winfo_height(), 10)
+            estado["rect"] = _retangulo_arredondado(
+                canvas, 1, 1, w - 1, h - 1, 12, fill=cor_fundo, outline="")
+            canvas.create_text(14, 16, text=emoji, font=("Segoe UI Emoji", 19), anchor="nw")
+            canvas.create_text(14, 46, text=titulo, font=("Segoe UI", 12, "bold"), anchor="nw",
+                                fill=cor_texto, width=w - 26)
+            canvas.create_text(14, h - 12, text="Disponível" if disponivel else "Em breve",
+                                font=("Segoe UI", 9, "bold"), anchor="sw", fill=cor_status)
+
+        canvas.bind("<Configure>", redesenhar)
 
         if disponivel:
             def abrir(_e=None):
                 self._ir_para(chave)
-            for widget in (cartao, *cartao.winfo_children()):
-                widget.bind("<Button-1>", abrir)
+            def entrar(_e=None):
+                if estado["rect"] is not None:
+                    canvas.itemconfig(estado["rect"], fill=cor_hover)
+            def sair(_e=None):
+                if estado["rect"] is not None:
+                    canvas.itemconfig(estado["rect"], fill=cor_fundo)
+            canvas.bind("<Button-1>", abrir)
+            canvas.bind("<Enter>", entrar)
+            canvas.bind("<Leave>", sair)
         else:
             def avisar(_e=None):
                 messagebox.showinfo(titulo, f"{titulo} ainda não está disponível — em breve!")
-            for widget in (cartao, *cartao.winfo_children()):
-                widget.bind("<Button-1>", avisar)
-        return cartao
+            canvas.bind("<Button-1>", avisar)
+        return canvas
 
     def _atualizar_saudacao_home(self):
         nome_escola = self.config_escola.get("nome_escola", "").strip()
@@ -373,6 +419,7 @@ class App(tk.Tk):
         self._linha_voltar_escola.pack(fill="x", pady=(0, 4))
         tk.Button(self._linha_voltar_escola, text="← Voltar ao início", command=lambda: self._ir_para("home"),
                   bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
                   relief="flat", cursor="hand2", bd=0).pack(anchor="w")
 
         aba_escola = tk.Frame(pagina, bg=COR_FUNDO)
@@ -455,6 +502,7 @@ class App(tk.Tk):
 
         btn_salvar = tk.Button(cartao, text="Salvar dados da escola", command=self._salvar_dados_escola,
                                 bg=COR_AZUL, fg="white", font=("Segoe UI", 10, "bold"),
+                                activebackground=COR_AZUL_ESCURO, activeforeground="white",
                                 relief="flat", padx=18, pady=8, cursor="hand2")
         btn_salvar.pack(anchor="w", pady=(10, 0))
 
@@ -499,6 +547,7 @@ class App(tk.Tk):
 
         tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
                   bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
                   relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
 
         canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
@@ -566,6 +615,7 @@ class App(tk.Tk):
 
         btn_gerar = tk.Button(cartao, text="Gerar Memorando (.docx)", command=self._gerar_memorando,
                                bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
                                relief="flat", padx=20, pady=10, cursor="hand2")
         btn_gerar.pack(anchor="w", pady=(10, 0))
 
@@ -631,6 +681,7 @@ class App(tk.Tk):
 
         tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
                   bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
                   relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
 
         canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
@@ -707,6 +758,7 @@ class App(tk.Tk):
 
         btn_gerar = tk.Button(cartao, text="Gerar Ofício (.docx)", command=self._gerar_oficio,
                                bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
                                relief="flat", padx=20, pady=10, cursor="hand2")
         btn_gerar.pack(anchor="w", pady=(10, 0))
 
@@ -774,6 +826,7 @@ class App(tk.Tk):
 
         tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
                   bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
                   relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
 
         canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
@@ -869,6 +922,7 @@ class App(tk.Tk):
 
         btn_gerar = tk.Button(cartao, text="Gerar Declaração (.docx)", command=self._gerar_declaracao,
                                bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
                                relief="flat", padx=20, pady=10, cursor="hand2")
         btn_gerar.pack(anchor="w", pady=(10, 0))
 
@@ -935,6 +989,7 @@ class App(tk.Tk):
 
         tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
                   bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
                   relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
 
         canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
@@ -990,6 +1045,7 @@ class App(tk.Tk):
 
         btn_gerar = tk.Button(cartao, text="Gerar Termo de Abertura (.docx)", command=self._gerar_capa_livro,
                                bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
                                relief="flat", padx=20, pady=10, cursor="hand2")
         btn_gerar.pack(anchor="w", pady=(10, 0))
 
@@ -1050,6 +1106,7 @@ class App(tk.Tk):
 
         tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
                   bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
                   relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
 
         canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
@@ -1247,6 +1304,7 @@ class App(tk.Tk):
 
         btn_gerar = tk.Button(cartao, text="Gerar Ficha de Matrícula (.docx)", command=self._gerar_ficha_matricula,
                                bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
                                relief="flat", padx=20, pady=10, cursor="hand2")
         btn_gerar.pack(anchor="w", pady=(14, 0))
 
