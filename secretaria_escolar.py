@@ -205,7 +205,7 @@ DOCUMENTOS_DISPONIVEIS = [
     ("declaracao", "📃", "Declaração Escolar", True),
     ("bolsa", "🎓", "Relatório do Bolsa Família", False),
     ("capa_livro", "📚", "Capa de Abertura de Livro", True),
-    ("ficha_matricula", "📝", "Ficha de Matrícula", False),
+    ("ficha_matricula", "📝", "Ficha de Matrícula", True),
     ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", False),
     ("lista_frequencia", "🗓️", "Lista de Frequência Escolar", False),
 ]
@@ -248,7 +248,7 @@ class App(tk.Tk):
         self.container.columnconfigure(0, weight=1)
 
         self.paginas = {}
-        for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro"):
+        for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro", "ficha_matricula"):
             frame = tk.Frame(self.container, bg=COR_FUNDO)
             frame.grid(row=0, column=0, sticky="nsew")
             self.paginas[nome] = frame
@@ -259,6 +259,7 @@ class App(tk.Tk):
         self._montar_pagina_oficio()
         self._montar_pagina_declaracao()
         self._montar_pagina_capa_livro()
+        self._montar_pagina_ficha_matricula()
 
     def _ir_para(self, nome, primeira_vez=False):
         if nome == "home":
@@ -1038,6 +1039,305 @@ class App(tk.Tk):
         self.label_status_capa_livro.config(text=f"Termo de abertura gerado: {os.path.basename(caminho)}")
         if messagebox.askyesno(
                 "Termo de abertura gerado", "Termo de abertura gerado com sucesso. Deseja abrir o arquivo agora?"):
+            try:
+                os.startfile(caminho)
+            except Exception:
+                pass
+
+    # ---------------- Ficha de Matrícula ----------------
+    def _montar_pagina_ficha_matricula(self):
+        pagina = self.paginas["ficha_matricula"]
+
+        tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
+                  bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Nova ficha de matrícula", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 16))
+
+        self.campo_ficha_tipo_ficha = CampoOpcao(
+            cartao, "Tipo de ficha",
+            [("Educação Infantil", "Educação Infantil"), ("Maternal", "Maternal"),
+             ("Ensino Fundamental I", "Ensino Fundamental I"), ("Ensino Fundamental II", "Ensino Fundamental II")],
+            largura=25)
+        self.campo_ficha_tipo_ficha.pack(fill="x")
+
+        self.campo_ficha_codigo_aluno = CampoTexto(cartao, "Código do aluno (do sistema da rede) - opcional",
+                                                    largura=25)
+        self.campo_ficha_codigo_aluno.pack(fill="x")
+        self.campo_ficha_nis = CampoTexto(cartao, "N.I.S. (Número de Identificação Social) - opcional", largura=25)
+        self.campo_ficha_nis.pack(fill="x")
+
+        tk.Label(cartao, text="Dados pessoais da criança", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(10, 6))
+
+        self.campo_ficha_nome_social = CampoTexto(cartao, "Nome social - opcional", largura=50)
+        self.campo_ficha_nome_social.pack(fill="x")
+        self.campo_ficha_nome_crianca = CampoTexto(cartao, "Nome completo da criança - sem abreviaturas",
+                                                     largura=60)
+        self.campo_ficha_nome_crianca.pack(fill="x")
+
+        linha1 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha1.pack(fill="x")
+        self.campo_ficha_data_nascimento = CampoTexto(linha1, "Data de nascimento", largura=14)
+        self.campo_ficha_data_nascimento.pack(side="left", padx=(0, 16))
+        self.campo_ficha_sexo = CampoOpcao(
+            linha1, "Sexo", [("masculino", "Masculino"), ("feminino", "Feminino")], largura=12)
+        self.campo_ficha_sexo.pack(side="left", padx=(0, 16))
+        self.campo_ficha_gemeo = CampoOpcao(linha1, "Gêmeo(a)", [("nao", "Não"), ("sim", "Sim")], largura=8)
+        self.campo_ficha_gemeo.pack(side="left", padx=(0, 16))
+        self.campo_ficha_tipo_sanguineo = CampoTexto(linha1, "Tipo sanguíneo - opcional", largura=10)
+        self.campo_ficha_tipo_sanguineo.pack(side="left")
+
+        linha2 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha2.pack(fill="x")
+        self.campo_ficha_nacionalidade = CampoTexto(linha2, "Nacionalidade (só para estrangeiro) - opcional",
+                                                      largura=30)
+        self.campo_ficha_nacionalidade.pack(side="left", padx=(0, 16))
+        self.campo_ficha_data_entrada_pais = CampoTexto(linha2, "Data de entrada no país - opcional", largura=16)
+        self.campo_ficha_data_entrada_pais.pack(side="left")
+
+        linha3 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha3.pack(fill="x")
+        self.campo_ficha_naturalidade = CampoTexto(linha3, "Naturalidade/Município", largura=35)
+        self.campo_ficha_naturalidade.pack(side="left", padx=(0, 16))
+        self.campo_ficha_uf_naturalidade = CampoTexto(linha3, "UF", largura=6)
+        self.campo_ficha_uf_naturalidade.pack(side="left")
+
+        self.campo_ficha_nome_mae = CampoTexto(cartao, "Nome completo da mãe - sem abreviaturas", largura=60)
+        self.campo_ficha_nome_mae.pack(fill="x")
+        self.campo_ficha_nome_pai = CampoTexto(cartao, "Nome completo do pai - sem abreviaturas - opcional",
+                                                largura=60)
+        self.campo_ficha_nome_pai.pack(fill="x")
+
+        self.campo_ficha_endereco = CampoTexto(cartao, "Endereço residencial", largura=60)
+        self.campo_ficha_endereco.pack(fill="x")
+
+        linha4 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha4.pack(fill="x")
+        self.campo_ficha_numero = CampoTexto(linha4, "Número", largura=10)
+        self.campo_ficha_numero.pack(side="left", padx=(0, 16))
+        self.campo_ficha_complemento = CampoTexto(linha4, "Complemento - opcional", largura=30)
+        self.campo_ficha_complemento.pack(side="left", padx=(0, 16))
+        self.campo_ficha_tipo_logradouro = CampoTexto(linha4, "Tipo de logradouro (ex: Rua, Avenida)", largura=18)
+        self.campo_ficha_tipo_logradouro.pack(side="left")
+
+        linha5 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha5.pack(fill="x")
+        self.campo_ficha_bairro = CampoTexto(linha5, "Bairro", largura=35)
+        self.campo_ficha_bairro.pack(side="left", padx=(0, 16))
+        self.campo_ficha_cep = CampoTexto(linha5, "CEP", largura=12)
+        self.campo_ficha_cep.pack(side="left")
+
+        tk.Label(cartao, text="Certidão de nascimento", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 4))
+
+        linha6 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha6.pack(fill="x")
+        self.campo_ficha_numero_termo = CampoTexto(linha6, "Número do termo", largura=14)
+        self.campo_ficha_numero_termo.pack(side="left", padx=(0, 16))
+        self.campo_ficha_folha = CampoTexto(linha6, "Folha", largura=8)
+        self.campo_ficha_folha.pack(side="left", padx=(0, 16))
+        self.campo_ficha_livro = CampoTexto(linha6, "Livro", largura=10)
+        self.campo_ficha_livro.pack(side="left", padx=(0, 16))
+        self.campo_ficha_data_emissao_certidao = CampoTexto(linha6, "Data de emissão", largura=14)
+        self.campo_ficha_data_emissao_certidao.pack(side="left", padx=(0, 16))
+        self.campo_ficha_uf_cartorio = CampoTexto(linha6, "UF do cartório", largura=8)
+        self.campo_ficha_uf_cartorio.pack(side="left")
+
+        self.campo_ficha_nome_cartorio = CampoTexto(cartao, "Nome do cartório - órgão emissor", largura=60)
+        self.campo_ficha_nome_cartorio.pack(fill="x")
+        self.campo_ficha_matricula_registro_civil = CampoTexto(
+            cartao, "Matrícula do Registro Civil (número com 32 dígitos) - opcional", largura=45)
+        self.campo_ficha_matricula_registro_civil.pack(fill="x")
+
+        tk.Label(cartao, text="Identidade (RG) - opcional", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 4))
+
+        linha7 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha7.pack(fill="x")
+        self.campo_ficha_numero_identidade = CampoTexto(linha7, "Número da identidade", largura=16)
+        self.campo_ficha_numero_identidade.pack(side="left", padx=(0, 16))
+        self.campo_ficha_complemento_identidade = CampoTexto(linha7, "Complemento", largura=16)
+        self.campo_ficha_complemento_identidade.pack(side="left", padx=(0, 16))
+        self.campo_ficha_data_expedicao_identidade = CampoTexto(linha7, "Data de expedição", largura=14)
+        self.campo_ficha_data_expedicao_identidade.pack(side="left", padx=(0, 16))
+        self.campo_ficha_uf_rg = CampoTexto(linha7, "UF", largura=6)
+        self.campo_ficha_uf_rg.pack(side="left", padx=(0, 16))
+        self.campo_ficha_orgao_emissor_identidade = CampoTexto(linha7, "Órgão emissor", largura=14)
+        self.campo_ficha_orgao_emissor_identidade.pack(side="left")
+
+        linha8 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha8.pack(fill="x")
+        self.campo_ficha_cpf = CampoTexto(linha8, "Número do CPF - opcional", largura=18)
+        self.campo_ficha_cpf.pack(side="left", padx=(0, 16))
+        self.campo_ficha_cor_raca = CampoOpcao(
+            linha8, "Cor/Raça",
+            [("branca", "Branca"), ("preta", "Preta"), ("parda", "Parda"), ("amarela", "Amarela"),
+             ("indigena", "Indígena"), ("nao_declarada", "Não declarada")], largura=16)
+        self.campo_ficha_cor_raca.pack(side="left", padx=(0, 16))
+        self.campo_ficha_telefone_ficha = CampoTexto(linha8, "Telefone de contato", largura=18)
+        self.campo_ficha_telefone_ficha.pack(side="left")
+
+        tk.Label(cartao, text="Dados escolares", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(14, 6))
+
+        linha9 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha9.pack(fill="x")
+        self.campo_ficha_data_ingresso = CampoTexto(
+            linha9, "Data de ingresso na Unidade de Ensino", datetime.date.today().strftime("%d/%m/%Y"), largura=16)
+        self.campo_ficha_data_ingresso.pack(side="left", padx=(0, 16))
+        self.campo_ficha_deficiencia = CampoOpcao(
+            linha9, "Criança com deficiência", [("nao", "Não"), ("sim", "Sim")], largura=10)
+        self.campo_ficha_deficiencia.pack(side="left", padx=(0, 16))
+        self.campo_ficha_bolsa_familia = CampoOpcao(
+            linha9, "Participa do Bolsa Família", [("nao", "Não"), ("sim", "Sim")], largura=10)
+        self.campo_ficha_bolsa_familia.pack(side="left")
+
+        linha10 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha10.pack(fill="x")
+        self.campo_ficha_tipo_deficiencia = CampoTexto(linha10, "Tipo de deficiência - opcional", largura=30)
+        self.campo_ficha_tipo_deficiencia.pack(side="left", padx=(0, 16))
+        self.campo_ficha_necessidades_especiais = CampoOpcao(
+            linha10, "Necessidades educacionais especiais", [("nao", "Não"), ("sim", "Sim")], largura=10)
+        self.campo_ficha_necessidades_especiais.pack(side="left", padx=(0, 16))
+        self.campo_ficha_apoio_pedagogico = CampoOpcao(
+            linha10, "Apoio pedagógico especializado",
+            [("", "Não se aplica"), ("na_escola", "Na própria escola"), ("outra_escola", "Outra escola/Centro")],
+            largura=20)
+        self.campo_ficha_apoio_pedagogico.pack(side="left")
+
+        linha11 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha11.pack(fill="x")
+        self.campo_ficha_transporte_escolar = CampoOpcao(
+            linha11, "Utiliza transporte escolar público", [("nao", "Não"), ("sim", "Sim")], largura=10)
+        self.campo_ficha_transporte_escolar.pack(side="left", padx=(0, 16))
+        self.campo_ficha_tipo_transporte = CampoOpcao(
+            linha11, "Tipo de transporte oferecido",
+            [("", "Não se aplica"), ("fluvial", "Fluvial"), ("rodoviario", "Rodoviário")], largura=16)
+        self.campo_ficha_tipo_transporte.pack(side="left", padx=(0, 16))
+        self.campo_ficha_zona_residencia = CampoOpcao(
+            linha11, "Zona de residência", [("urbana", "Urbana"), ("rural", "Rural")], largura=10)
+        self.campo_ficha_zona_residencia.pack(side="left")
+
+        self.campo_ficha_movimento = CampoOpcao(
+            cartao, "Movimento e rendimento escolar",
+            [("nenhum", "Nenhum (matrícula normal)"), ("abandono", "Afastado por abandono"),
+             ("transferencia", "Afastado por transferência"), ("matricula_final", "Matrícula Final")],
+            largura=30)
+        self.campo_ficha_movimento.pack(fill="x")
+
+        self.campo_ficha_etapa = CampoTexto(cartao, "Série/Turma (ex: Maternal II, 5º Ano)", largura=30)
+        self.campo_ficha_etapa.pack(fill="x")
+
+        btn_gerar = tk.Button(cartao, text="Gerar Ficha de Matrícula (.docx)", command=self._gerar_ficha_matricula,
+                               bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               relief="flat", padx=20, pady=10, cursor="hand2")
+        btn_gerar.pack(anchor="w", pady=(14, 0))
+
+        self.label_status_ficha_matricula = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE,
+                                                       font=FONTE_PADRAO)
+        self.label_status_ficha_matricula.pack(anchor="w", pady=(8, 0))
+
+    def _gerar_ficha_matricula(self):
+        if not self.config_escola.get("nome_escola"):
+            messagebox.showwarning(
+                "Dados da escola pendentes",
+                "Preencha e salve os Dados da Escola antes de gerar uma ficha de matrícula.")
+            self._ir_para("escola")
+            return
+
+        nome_crianca = self.campo_ficha_nome_crianca.get()
+        nome_mae = self.campo_ficha_nome_mae.get()
+        if not nome_crianca or not nome_mae:
+            messagebox.showwarning(
+                "Campos obrigatórios", "Preencha ao menos o nome da criança e o nome da mãe.")
+            return
+
+        dados_ficha = {
+            "tipo_ficha": self.campo_ficha_tipo_ficha.get(),
+            "codigo_aluno": self.campo_ficha_codigo_aluno.get(),
+            "nis": self.campo_ficha_nis.get(),
+            "nome_social": self.campo_ficha_nome_social.get(),
+            "nome_crianca": nome_crianca,
+            "data_nascimento": self.campo_ficha_data_nascimento.get(),
+            "sexo": self.campo_ficha_sexo.get(),
+            "gemeo": self.campo_ficha_gemeo.get() == "sim",
+            "tipo_sanguineo": self.campo_ficha_tipo_sanguineo.get(),
+            "nacionalidade": self.campo_ficha_nacionalidade.get(),
+            "data_entrada_pais": self.campo_ficha_data_entrada_pais.get(),
+            "naturalidade": self.campo_ficha_naturalidade.get(),
+            "uf_naturalidade": self.campo_ficha_uf_naturalidade.get(),
+            "nome_mae": nome_mae,
+            "nome_pai": self.campo_ficha_nome_pai.get(),
+            "endereco": self.campo_ficha_endereco.get(),
+            "numero": self.campo_ficha_numero.get(),
+            "complemento": self.campo_ficha_complemento.get(),
+            "tipo_logradouro": self.campo_ficha_tipo_logradouro.get(),
+            "bairro": self.campo_ficha_bairro.get(),
+            "cep": self.campo_ficha_cep.get(),
+            "numero_termo": self.campo_ficha_numero_termo.get(),
+            "folha": self.campo_ficha_folha.get(),
+            "livro": self.campo_ficha_livro.get(),
+            "data_emissao_certidao": self.campo_ficha_data_emissao_certidao.get(),
+            "uf_cartorio": self.campo_ficha_uf_cartorio.get(),
+            "nome_cartorio": self.campo_ficha_nome_cartorio.get(),
+            "matricula_registro_civil": self.campo_ficha_matricula_registro_civil.get(),
+            "numero_identidade": self.campo_ficha_numero_identidade.get(),
+            "complemento_identidade": self.campo_ficha_complemento_identidade.get(),
+            "data_expedicao_identidade": self.campo_ficha_data_expedicao_identidade.get(),
+            "uf_rg": self.campo_ficha_uf_rg.get(),
+            "orgao_emissor_identidade": self.campo_ficha_orgao_emissor_identidade.get(),
+            "cpf": self.campo_ficha_cpf.get(),
+            "cor_raca": self.campo_ficha_cor_raca.get(),
+            "telefone": self.campo_ficha_telefone_ficha.get(),
+            "data_ingresso": self.campo_ficha_data_ingresso.get(),
+            "deficiencia": self.campo_ficha_deficiencia.get(),
+            "bolsa_familia": self.campo_ficha_bolsa_familia.get(),
+            "tipo_deficiencia": self.campo_ficha_tipo_deficiencia.get(),
+            "necessidades_especiais": self.campo_ficha_necessidades_especiais.get(),
+            "apoio_pedagogico": self.campo_ficha_apoio_pedagogico.get(),
+            "transporte_escolar": self.campo_ficha_transporte_escolar.get(),
+            "tipo_transporte": self.campo_ficha_tipo_transporte.get(),
+            "zona_residencia": self.campo_ficha_zona_residencia.get(),
+            "movimento": self.campo_ficha_movimento.get(),
+            "etapa": self.campo_ficha_etapa.get(),
+        }
+
+        nome_sugerido = f"Ficha de Matricula - {nome_crianca}.docx"
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar ficha de matrícula",
+            initialfile=nome_sugerido,
+            defaultextension=".docx",
+            filetypes=[("Documento Word", "*.docx")])
+        if not caminho:
+            return
+
+        try:
+            documentos.gerar_ficha_matricula(self.config_escola, dados_ficha, caminho)
+        except Exception as e:
+            messagebox.showerror("Erro ao gerar ficha de matrícula", str(e))
+            return
+
+        self.label_status_ficha_matricula.config(text=f"Ficha de matrícula gerada: {os.path.basename(caminho)}")
+        if messagebox.askyesno(
+                "Ficha de matrícula gerada",
+                "Ficha de matrícula gerada com sucesso. Deseja abrir o arquivo agora?"):
             try:
                 os.startfile(caminho)
             except Exception:

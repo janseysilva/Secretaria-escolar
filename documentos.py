@@ -895,3 +895,250 @@ def gerar_capa_livro(dados_escola, dados_livro, caminho_saida):
 
     document.save(caminho_saida)
     return caminho_saida
+
+
+LARGURA_UTIL_FICHA_CM = 18.5  # mesma largura util do Memorando (margens estreitas)
+
+
+def _celula_campo(celula, rotulo, valor):
+    """Celula de formulario com o rotulo pequeno em cima (itálico) e o
+    valor maior embaixo (negrito) - imita o padrao visual de formulario
+    oficial (rótulo/caixa de preenchimento)."""
+    celula.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+    p1 = celula.paragraphs[0]
+    r1 = p1.add_run(rotulo)
+    r1.italic = True
+    r1.font.name = FONTE
+    r1.font.size = Pt(TAM_NORMAL - 3)
+    p2 = celula.add_paragraph()
+    r2 = p2.add_run(valor or "")
+    r2.bold = True
+    r2.font.name = FONTE
+    r2.font.size = Pt(TAM_NORMAL - 1)
+
+
+def _celula_opcoes(celula, rotulo, opcoes):
+    """Celula de formulario com um rotulo em cima e uma lista de opcoes
+    (X)/( ) lado a lado embaixo - pra campos de escolha unica/multipla
+    (Sim/Não, Urbana/Rural etc), marcadas automaticamente conforme o que
+    foi escolhido no app."""
+    celula.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+    p1 = celula.paragraphs[0]
+    r1 = p1.add_run(rotulo)
+    r1.italic = True
+    r1.font.name = FONTE
+    r1.font.size = Pt(TAM_NORMAL - 3)
+    p2 = celula.add_paragraph()
+    texto_opcoes = "   ".join(f"{_caixa(marcado)} {texto}" for texto, marcado in opcoes)
+    r2 = p2.add_run(texto_opcoes)
+    r2.font.name = FONTE
+    r2.font.size = Pt(TAM_NORMAL - 1)
+
+
+def _linha_campos(document, campos, larguras=None):
+    """Uma linha do formulario com varios campos lado a lado (lista de
+    tuplas (rotulo, valor) OU (rotulo, [(texto, marcado), ...]) pra campos
+    de opcao) - cada um numa celula com borda."""
+    n = len(campos)
+    larguras = larguras or [LARGURA_UTIL_FICHA_CM / n] * n
+    tabela = document.add_table(rows=1, cols=n)
+    tabela.style = "Table Grid"
+    _definir_largura_colunas(tabela, larguras)
+    _definir_margens_celulas(tabela)
+    for celula, (rotulo, valor) in zip(tabela.rows[0].cells, campos):
+        if isinstance(valor, list):
+            _celula_opcoes(celula, rotulo, valor)
+        else:
+            _celula_campo(celula, rotulo, valor)
+    return tabela
+
+
+def _titulo_secao_ficha(document, texto):
+    """Barra de titulo de secao do formulario (fundo cinza claro)."""
+    tabela = document.add_table(rows=1, cols=1)
+    tabela.style = "Table Grid"
+    _definir_largura_colunas(tabela, [LARGURA_UTIL_FICHA_CM])
+    celula = tabela.rows[0].cells[0]
+    tcPr = celula._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:fill"), "E7E6E6")
+    tcPr.append(shd)
+    _paragrafo(celula, texto, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+
+def gerar_ficha_matricula(dados_escola, dados_ficha, caminho_saida):
+    """Gera uma Ficha de Matrícula (.docx), adaptada do modelo oficial usado
+    pela SEMED Manaus pra servir qualquer escola do Brasil e qualquer etapa
+    de ensino (cabecalho generico igual aos outros documentos, em vez do
+    timbre fixo da prefeitura de Manaus; título e etapa/turma digitados
+    livremente, não presos só à Educação Infantil).
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
+        telefone, email.
+    dados_ficha: dict com tipo_ficha (texto livre pro título, ex: "Educação
+        Infantil"/"Ensino Fundamental I" - default "Educação Infantil" se
+        vazio), nome_social, nome_crianca, data_nascimento, sexo
+        ("masculino"/"feminino"), gemeo (bool), tipo_sanguineo,
+        nacionalidade, data_entrada_pais, naturalidade, uf_naturalidade,
+        nome_mae, nome_pai, endereco, numero, complemento, tipo_logradouro,
+        bairro, cep, numero_termo, folha, livro, data_emissao_certidao,
+        uf_cartorio, nome_cartorio, numero_identidade,
+        complemento_identidade, data_expedicao_identidade, uf_rg,
+        orgao_emissor_identidade, cpf, cor_raca ("branca"/"preta"/"parda"/
+        "amarela"/"indigena"/"nao_declarada"), telefone,
+        matricula_registro_civil, codigo_aluno, nis, data_ingresso,
+        deficiencia ("sim"/"nao"), bolsa_familia ("sim"/"nao"),
+        tipo_deficiencia, necessidades_especiais ("sim"/"nao"),
+        apoio_pedagogico ("na_escola"/"outra_escola"/""), transporte_escolar
+        ("sim"/"nao"), tipo_transporte ("fluvial"/"rodoviario"/""),
+        zona_residencia ("urbana"/"rural"), movimento ("nenhum"/"abandono"/
+        "transferencia"/"matricula_final"), etapa (texto livre, ex:
+        "Maternal II", "5º Ano").
+    """
+    document = docx.Document()
+    _config_secao(document)
+    _set_fonte_padrao(document)
+
+    # --- Cabecalho: logo + secretaria, e tabela com os dados da escola ---
+    _cabecalho_logo_e_secretaria(document, dados_escola)
+    document.add_paragraph()
+    _tabela_dados_escola(document, dados_escola)
+    document.add_paragraph()
+
+    tipo_ficha = (dados_ficha.get("tipo_ficha") or "Educação Infantil").strip()
+    _paragrafo(document, f"FICHA DE MATRÍCULA – {tipo_ficha.upper()}", negrito=True, tamanho=TAM_TITULO,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    document.add_paragraph()
+
+    nome_escola = (dados_escola.get("nome_escola") or "").strip()
+    _linha_campos(document, [
+        ("Unidade de Ensino", nome_escola),
+        ("Código Aluno", dados_ficha.get("codigo_aluno", "")),
+        ("N.I.S.", dados_ficha.get("nis", "")),
+    ], larguras=[9.5, 4.5, 4.5])
+
+    document.add_paragraph()
+
+    # --- DADOS PESSOAIS DA CRIANÇA ---
+    _titulo_secao_ficha(document, "DADOS PESSOAIS DA CRIANÇA")
+
+    nome_social = (dados_ficha.get("nome_social") or "").strip()
+    if nome_social:
+        _linha_campos(document, [("Nome Social", nome_social)])
+
+    _linha_campos(document, [("Nome completo da criança – sem abreviaturas", dados_ficha.get("nome_crianca", ""))])
+
+    sexo = dados_ficha.get("sexo") or ""
+    _linha_campos(document, [
+        ("Data de nascimento", dados_ficha.get("data_nascimento", "")),
+        ("Sexo", [("Masculino", sexo == "masculino"), ("Feminino", sexo == "feminino")]),
+        ("Gêmeo", [("Sim", bool(dados_ficha.get("gemeo")))]),
+        ("Tipo Sanguíneo", dados_ficha.get("tipo_sanguineo", "")),
+    ], larguras=[4.5, 5.0, 3.0, 6.0])
+
+    _linha_campos(document, [
+        ("Nacionalidade (para estrangeiro)", dados_ficha.get("nacionalidade", "")),
+        ("Data de entrada no país", dados_ficha.get("data_entrada_pais", "")),
+    ], larguras=[11.0, 7.5])
+
+    _linha_campos(document, [
+        ("Naturalidade/Município", dados_ficha.get("naturalidade", "")),
+        ("UF", dados_ficha.get("uf_naturalidade", "")),
+    ], larguras=[16.0, 2.5])
+
+    _linha_campos(document, [("Nome completo da mãe – sem abreviaturas", dados_ficha.get("nome_mae", ""))])
+    _linha_campos(document, [("Nome completo do pai – sem abreviaturas", dados_ficha.get("nome_pai", ""))])
+    _linha_campos(document, [("Endereço residencial", dados_ficha.get("endereco", ""))])
+
+    _linha_campos(document, [
+        ("Número", dados_ficha.get("numero", "")),
+        ("Complemento", dados_ficha.get("complemento", "")),
+        ("Tipo logradouro", dados_ficha.get("tipo_logradouro", "")),
+    ], larguras=[4.0, 8.5, 6.0])
+
+    _linha_campos(document, [
+        ("Bairro", dados_ficha.get("bairro", "")),
+        ("CEP", dados_ficha.get("cep", "")),
+    ], larguras=[12.0, 6.5])
+
+    _linha_campos(document, [
+        ("Certidão Civil", [("Nascimento", True)]),
+        ("Número do Termo", dados_ficha.get("numero_termo", "")),
+        ("Folha", dados_ficha.get("folha", "")),
+        ("Livro", dados_ficha.get("livro", "")),
+        ("Data de emissão", dados_ficha.get("data_emissao_certidao", "")),
+        ("UF/Cartório", dados_ficha.get("uf_cartorio", "")),
+    ], larguras=[3.5, 3.5, 2.5, 2.5, 3.5, 3.0])
+
+    _linha_campos(document, [
+        ("Nome do Cartório – Órgão emissor", dados_ficha.get("nome_cartorio", "")),
+        ("Número da Identidade", dados_ficha.get("numero_identidade", "")),
+    ], larguras=[11.0, 7.5])
+
+    _linha_campos(document, [
+        ("Complemento de Identidade", dados_ficha.get("complemento_identidade", "")),
+        ("Data de Expedição", dados_ficha.get("data_expedicao_identidade", "")),
+        ("UF Rg", dados_ficha.get("uf_rg", "")),
+        ("Órgão emissor", dados_ficha.get("orgao_emissor_identidade", "")),
+    ], larguras=[5.5, 4.5, 2.5, 6.0])
+
+    cor_raca = dados_ficha.get("cor_raca") or ""
+    _linha_campos(document, [
+        ("Número do CPF", dados_ficha.get("cpf", "")),
+        ("Cor/Raça", [("Branca", cor_raca == "branca"), ("Preta", cor_raca == "preta"),
+                      ("Parda", cor_raca == "parda"), ("Amarela", cor_raca == "amarela"),
+                      ("Indígena", cor_raca == "indigena"), ("Não declarada", cor_raca == "nao_declarada")]),
+        ("Telefone", dados_ficha.get("telefone", "")),
+    ], larguras=[3.5, 10.0, 5.0])
+
+    _linha_campos(document, [("Matrícula do Registro Civil", dados_ficha.get("matricula_registro_civil", ""))])
+
+    document.add_paragraph()
+
+    # --- DADOS ESCOLARES ---
+    _titulo_secao_ficha(document, "DADOS ESCOLARES")
+
+    deficiencia = dados_ficha.get("deficiencia") or "nao"
+    bolsa_familia = dados_ficha.get("bolsa_familia") or "nao"
+    _linha_campos(document, [
+        ("Data de ingresso na Unidade de Ensino", dados_ficha.get("data_ingresso", "")),
+        ("Criança com Deficiência", [("Sim", deficiencia == "sim"), ("Não", deficiencia == "nao")]),
+        ("Participa do Programa Bolsa Família",
+         [("Sim", bolsa_familia == "sim"), ("Não", bolsa_familia == "nao")]),
+    ], larguras=[7.0, 5.5, 6.0])
+
+    tipo_deficiencia = (dados_ficha.get("tipo_deficiencia") or "").strip()
+    necessidades = dados_ficha.get("necessidades_especiais") or "nao"
+    apoio = dados_ficha.get("apoio_pedagogico") or ""
+    _linha_campos(document, [
+        ("Tipo de Deficiência", tipo_deficiencia),
+        ("Necessidades Educacionais Especiais", [("Sim", necessidades == "sim"), ("Não", necessidades == "nao")]),
+        ("Apoio Pedagógico Especializado",
+         [("Na própria escola", apoio == "na_escola"), ("Outra escola/Centro", apoio == "outra_escola")]),
+    ], larguras=[5.0, 6.5, 7.0])
+
+    transporte = dados_ficha.get("transporte_escolar") or "nao"
+    tipo_transp = dados_ficha.get("tipo_transporte") or ""
+    zona = dados_ficha.get("zona_residencia") or ""
+    _linha_campos(document, [
+        ("Utiliza Transporte Escolar Público Municipal?",
+         [("Sim", transporte == "sim"), ("Não", transporte == "nao")]),
+        ("Tipo de Transporte Público Oferecido",
+         [("Fluvial", tipo_transp == "fluvial"), ("Rodoviário", tipo_transp == "rodoviario")]),
+        ("Zona de Residência", [("Urbana", zona == "urbana"), ("Rural", zona == "rural")]),
+    ], larguras=[6.0, 6.5, 6.0])
+
+    movimento = dados_ficha.get("movimento") or "nenhum"
+    _linha_campos(document, [
+        ("Movimento e Rendimento Escolar", [
+            ("Afastado por abandono", movimento == "abandono"),
+            ("Afastado por transferência", movimento == "transferencia"),
+            ("Matrícula Final", movimento == "matricula_final"),
+        ]),
+    ])
+
+    _linha_campos(document, [("Série/Turma", dados_ficha.get("etapa", ""))])
+
+    document.save(caminho_saida)
+    return caminho_saida
