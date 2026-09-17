@@ -59,6 +59,18 @@ def _config_secao(document):
     secao.bottom_margin = Cm(1.0)
 
 
+def _config_secao_paisagem(document):
+    """Pagina A4 na horizontal (paisagem) - usada em documentos com muitas
+    colunas, como a Ficha de Frequencia (uma coluna por dia letivo)."""
+    secao = document.sections[0]
+    secao.page_width = Cm(29.7)
+    secao.page_height = Cm(21)
+    secao.left_margin = Cm(1.5)
+    secao.right_margin = Cm(1.0)
+    secao.top_margin = Cm(0.7)
+    secao.bottom_margin = Cm(0.6)
+
+
 def _remover_bordas_tabela(tabela):
     tbl = tabela._tbl
     tblPr = tbl.tblPr
@@ -176,17 +188,23 @@ def _linhas_contato(dados_escola):
     return linhas
 
 
-def _cabecalho_logo_e_secretaria(document, dados_escola):
+def _cabecalho_logo_e_secretaria(document, dados_escola, largura_total_cm=16.0):
     """Logo a esquerda + nome da escola/secretaria a direita (maiusculo),
     igual ao timbre oficial da SEMED - usado no Oficio, no Termo de
     Abertura e na Declaracao. Retorna quantas linhas de texto foram
-    escritas, pra entrar no calculo de quanto empurrar o rodape pra baixo."""
+    escritas, pra entrar no calculo de quanto empurrar o rodape pra baixo.
+    largura_total_cm: largura do bloco todo (logo + texto) - o padrao 16cm
+    e o usado nos documentos em retrato; documentos em paisagem (mais
+    largos) passam a largura util da pagina pra manter o timbre
+    proporcional em vez de ficar torto pra esquerda."""
     logo_path = dados_escola.get("logo_path")
     linhas_cab = _linhas_cabecalho(dados_escola) or ["Secretaria Municipal de Educação"]
+    largura_logo = largura_total_cm * 2.5 / 16.0
+    largura_sec = largura_total_cm - largura_logo
     if logo_path:
         cab = document.add_table(rows=1, cols=2)
         _remover_bordas_tabela(cab)
-        _definir_largura_colunas(cab, [2.5, 13.5])
+        _definir_largura_colunas(cab, [largura_logo, largura_sec])
         cel_logo, cel_sec = cab.rows[0].cells
         _imagem_centralizada(cel_logo, logo_path, 2.0)
         cel_sec.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
@@ -953,11 +971,11 @@ def _linha_campos(document, campos, larguras=None):
     return tabela
 
 
-def _titulo_secao_ficha(document, texto):
+def _titulo_secao_ficha(document, texto, largura_cm=LARGURA_UTIL_FICHA_CM):
     """Barra de titulo de secao do formulario (fundo cinza claro)."""
     tabela = document.add_table(rows=1, cols=1)
     tabela.style = "Table Grid"
-    _definir_largura_colunas(tabela, [LARGURA_UTIL_FICHA_CM])
+    _definir_largura_colunas(tabela, [largura_cm])
     celula = tabela.rows[0].cells[0]
     tcPr = celula._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
@@ -1257,6 +1275,197 @@ def gerar_lista_reuniao_varias_turmas(dados_escola, dados_comuns, turmas, caminh
         dados_lista = dict(dados_comuns)
         dados_lista.update(dados_turma)
         _secao_lista_reuniao(document, dados_escola, dados_lista)
+
+    document.save(caminho_saida)
+    return caminho_saida
+
+
+LARGURA_UTIL_FREQUENCIA_CM = 29.7 - 1.5 - 1.0  # pagina em paisagem, margens de _config_secao_paisagem
+
+
+def _parse_dias_letivos(texto):
+    """Converte "1-5,8-12,15" em [1,2,3,4,5,8,9,10,11,12,15] - aceita
+    numeros soltos e faixas com "-", separados por virgula. Pedacos
+    invalidos sao ignorados silenciosamente (o formulario ja valida que o
+    campo nao ficou vazio antes de chamar isso)."""
+    dias = []
+    for pedaco in (texto or "").split(","):
+        pedaco = pedaco.strip()
+        if not pedaco:
+            continue
+        if "-" in pedaco:
+            try:
+                inicio, fim = pedaco.split("-", 1)
+                dias.extend(range(int(inicio.strip()), int(fim.strip()) + 1))
+            except ValueError:
+                continue
+        else:
+            try:
+                dias.append(int(pedaco))
+            except ValueError:
+                continue
+    return dias
+
+
+def _secao_lista_frequencia(document, dados_escola, dados_frequencia):
+    """Desenha uma secao completa (cabecalho + titulo + identificacao +
+    grade de frequencia) no documento - usada tanto pra uma ficha de turma
+    unica quanto, repetida com quebra de pagina entre cada chamada, pra
+    gerar varias turmas dentro do MESMO arquivo (ver
+    gerar_lista_frequencia_varias_turmas).
+
+    dados_frequencia: dict com mes (texto livre, ex: "Setembro"),
+        ano_letivo, turma, serie, turno, professor, dias_letivos (texto
+        livre, ex: "1-5,8-12,15-19,22-26" - dias do mes que tem aula, sem
+        contar fins de semana/feriados, digitados pela secretaria),
+        nomes_alunos (texto com um nome de aluno por linha - se vazio, a
+        tabela sai em branco com linhas_em_branco linhas), linhas_em_branco
+        (numero de linhas quando nomes_alunos estiver vazio, padrao 3).
+    """
+    # Cabecalho compacto (so logo + nome da escola/secretaria, sem a tabela
+    # de endereco/telefone/email) - esse documento e paisagem e mais curto
+    # na vertical, e o espaco importa mais aqui pra caber a turma inteira
+    # numa pagina so; a identificacao de Turma/Turno/Professor(a) abaixo ja
+    # basta pro uso do dia a dia.
+    _cabecalho_logo_e_secretaria(document, dados_escola, largura_total_cm=LARGURA_UTIL_FREQUENCIA_CM)
+
+    mes = (dados_frequencia.get("mes") or "").strip()
+    ano = (dados_frequencia.get("ano_letivo") or "").strip()
+    mes_ano = "/".join(parte for parte in (mes.upper(), ano) if parte)
+    titulo = f"{mes_ano} – FICHA DE FREQUÊNCIA ESCOLAR" if mes_ano else "FICHA DE FREQUÊNCIA ESCOLAR"
+    _titulo_secao_ficha(document, titulo, largura_cm=LARGURA_UTIL_FREQUENCIA_CM)
+
+    dias = _parse_dias_letivos(dados_frequencia.get("dias_letivos"))
+
+    _linha_campos(document, [
+        ("Turma", dados_frequencia.get("turma", "")),
+        ("Série", dados_frequencia.get("serie", "")),
+        ("Turno", dados_frequencia.get("turno", "")),
+        ("Professor(a)", dados_frequencia.get("professor", "")),
+        ("Dias letivos dados", str(len(dias)) if dias else ""),
+    ], larguras=[4.5, 5.5, 4.0, 9.0, LARGURA_UTIL_FREQUENCIA_CM - 23.0])
+
+    # --- Tabela de frequencia: Nº | Nome do Aluno | 1 coluna por dia (com
+    # cabecalho agrupador "PRESENÇA" por cima) | Faltas | F. Just. ---
+    TAM_TABELA_FREQ = 8
+    nomes = [linha.strip() for linha in (dados_frequencia.get("nomes_alunos") or "").split("\n") if linha.strip()]
+
+    largura_num, largura_nome, largura_faltas, largura_fjust = 1.0, 6.5, 1.3, 1.6
+    largura_fixas = largura_num + largura_nome + largura_faltas + largura_fjust
+    n_dias = max(len(dias), 1)
+    largura_por_dia = max((LARGURA_UTIL_FREQUENCIA_CM - largura_fixas) / n_dias, 0.45)
+
+    if nomes:
+        linhas_tabela = len(nomes) + 3
+    else:
+        try:
+            linhas_tabela = int(dados_frequencia.get("linhas_em_branco") or 3)
+        except (TypeError, ValueError):
+            linhas_tabela = 3
+    linhas_cabecalho = 2 if dias else 1
+    total_linhas = linhas_tabela + linhas_cabecalho
+
+    n_cols = 2 + len(dias) + 2
+    tabela = document.add_table(rows=total_linhas, cols=n_cols)
+    tabela.style = "Table Grid"
+    larguras_tabela = [largura_num, largura_nome] + [largura_por_dia] * len(dias) + [largura_faltas, largura_fjust]
+    _definir_largura_colunas(tabela, larguras_tabela)
+    _definir_margens_celulas(tabela, cima_cm=0.04, baixo_cm=0.04, esquerda_cm=0.08, direita_cm=0.08)
+
+    if dias:
+        # cabecalho em 2 linhas: Nº/Nome/Faltas/F.Just mesclados na vertical
+        # (ocupam as 2 linhas), e "PRESENÇA" mesclado na horizontal por
+        # cima dos dias - deixa claro que sao VARIAS colunas de presenca,
+        # uma por dia letivo, agrupadas visualmente.
+        col_faltas = 2 + len(dias)
+        col_fjust = col_faltas + 1
+
+        cel_num = tabela.cell(0, 0).merge(tabela.cell(1, 0))
+        cel_nome = tabela.cell(0, 1).merge(tabela.cell(1, 1))
+        cel_faltas = tabela.cell(0, col_faltas).merge(tabela.cell(1, col_faltas))
+        cel_fjust = tabela.cell(0, col_fjust).merge(tabela.cell(1, col_fjust))
+        if len(dias) > 1:
+            cel_presenca = tabela.cell(0, 2).merge(tabela.cell(0, col_faltas - 1))
+        else:
+            cel_presenca = tabela.cell(0, 2)
+
+        for celula, texto in ((cel_num, "Nº"), (cel_nome, "Nome do Aluno"),
+                               (cel_faltas, "Faltas"), (cel_fjust, "F. Just.")):
+            celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _paragrafo(celula, texto, negrito=True, tamanho=TAM_TABELA_FREQ, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+        cel_presenca.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _paragrafo(cel_presenca, "PRESENÇA (dias letivos)", negrito=True,
+                   tamanho=TAM_TABELA_FREQ, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+        for idx, dia in enumerate(dias):
+            celula_dia = tabela.rows[1].cells[2 + idx]
+            celula_dia.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _paragrafo(celula_dia, str(dia), negrito=True, tamanho=TAM_TABELA_FREQ,
+                       alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    else:
+        for celula, texto in zip(tabela.rows[0].cells, ["Nº", "Nome do Aluno", "Faltas", "F. Just."]):
+            celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _paragrafo(celula, texto, negrito=True, tamanho=TAM_TABELA_FREQ, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    for i in range(linhas_tabela):
+        linha_tabela = tabela.rows[i + linhas_cabecalho]
+        celulas = linha_tabela.cells
+        for c in celulas:
+            c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _paragrafo(celulas[0], f"{i + 1:02d}", tamanho=TAM_TABELA_FREQ, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+        if i < len(nomes):
+            _paragrafo(celulas[1], nomes[i], tamanho=TAM_TABELA_FREQ)
+        # as colunas de dias, Faltas e F. Just. ficam em branco, pra marcar a mao
+
+    p_nota = _paragrafo(document, "Marcar \"P\" para presença e \"F\" para falta em cada dia letivo. "
+                                   "Totalizar Faltas e Faltas Justificadas ao final do mês.",
+                         tamanho=9)
+    p_nota.paragraph_format.space_before = Pt(6)
+
+
+def gerar_lista_frequencia(dados_escola, dados_frequencia, caminho_saida):
+    """Gera uma Ficha de Frequência Escolar (.docx) - grade mensal com um
+    aluno por linha e uma coluna por dia letivo do mes, pra marcar
+    presenca/falta a mao dia a dia (mesmo uso que alimenta o calculo de
+    frequencia do Bolsa Familia no Relatorio de Presenca). Sai em pagina
+    paisagem (horizontal), ja que o numero de colunas de dias normalmente
+    nao caberia numa pagina em retrato.
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
+        telefone, email.
+    dados_frequencia: ver _secao_lista_frequencia.
+    """
+    document = docx.Document()
+    _config_secao_paisagem(document)
+    _set_fonte_padrao(document)
+    _secao_lista_frequencia(document, dados_escola, dados_frequencia)
+    document.save(caminho_saida)
+    return caminho_saida
+
+
+def gerar_lista_frequencia_varias_turmas(dados_escola, dados_comuns, turmas, caminho_saida):
+    """Gera UM UNICO .docx com uma pagina por turma (cabecalho + titulo +
+    grade repetidos, com quebra de pagina entre elas) - pra quando a mesma
+    ficha de frequencia precisa sair pra varias turmas de uma vez, sem
+    gerar um arquivo separado pra cada uma.
+
+    dados_comuns: mesmos campos de dados_frequencia em gerar_lista_frequencia,
+        que valem pra todas as turmas (normalmente so mes/ano_letivo, ja que
+        turma/serie/turno/professor/nomes_alunos mudam por turma). Pode ser
+        {} quando cada item de turmas ja vem com todos os campos completos.
+    turmas: lista de dicts, cada um com os campos especificos daquela turma.
+    """
+    document = docx.Document()
+    _config_secao_paisagem(document)
+    _set_fonte_padrao(document)
+
+    for indice, dados_turma in enumerate(turmas):
+        if indice > 0:
+            document.add_page_break()
+        dados_frequencia = dict(dados_comuns)
+        dados_frequencia.update(dados_turma)
+        _secao_lista_frequencia(document, dados_escola, dados_frequencia)
 
     document.save(caminho_saida)
     return caminho_saida
