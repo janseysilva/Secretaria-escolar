@@ -208,7 +208,7 @@ DOCUMENTOS_DISPONIVEIS = [
     ("bolsa", "🎓", "Relatório do Bolsa Família", False, "#854F0B"),
     ("capa_livro", "📚", "Capa de Abertura de Livro", True, "#993C1D"),
     ("ficha_matricula", "📝", "Ficha de Matrícula", True, "#993556"),
-    ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", False, "#3B6D11"),
+    ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", True, "#3B6D11"),
     ("lista_frequencia", "🗓️", "Lista de Frequência Escolar", False, "#0C447C"),
 ]
 
@@ -272,7 +272,8 @@ class App(tk.Tk):
         self.container.columnconfigure(0, weight=1)
 
         self.paginas = {}
-        for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro", "ficha_matricula"):
+        for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro", "ficha_matricula",
+                     "lista_reuniao"):
             frame = tk.Frame(self.container, bg=COR_FUNDO)
             frame.grid(row=0, column=0, sticky="nsew")
             self.paginas[nome] = frame
@@ -284,6 +285,7 @@ class App(tk.Tk):
         self._montar_pagina_declaracao()
         self._montar_pagina_capa_livro()
         self._montar_pagina_ficha_matricula()
+        self._montar_pagina_lista_reuniao()
 
     def _ir_para(self, nome, primeira_vez=False):
         if nome == "home":
@@ -1396,6 +1398,183 @@ class App(tk.Tk):
         if messagebox.askyesno(
                 "Ficha de matrícula gerada",
                 "Ficha de matrícula gerada com sucesso. Deseja abrir o arquivo agora?"):
+            try:
+                os.startfile(caminho)
+            except Exception:
+                pass
+
+    # ---------------- Lista de Reunião de Pais e Alunos ----------------
+    def _montar_pagina_lista_reuniao(self):
+        pagina = self.paginas["lista_reuniao"]
+
+        tk.Button(pagina, text="← Voltar ao início", command=lambda: self._ir_para("home"),
+                  bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
+                  relief="flat", cursor="hand2", bd=0).pack(anchor="w", pady=(0, 4))
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Nova lista de reunião", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 16))
+
+        self.campo_reuniao_tipo = CampoTexto(
+            cartao, "Tipo de reunião/lista (ex: Reunião de Pais e Alunos, Entrega de Livros...)",
+            "Reunião de Pais e Alunos", largura=50)
+        self.campo_reuniao_tipo.pack(fill="x")
+
+        self.campo_reuniao_data = CampoTexto(
+            cartao, "Data (texto livre, ex: 21/08/2025)", datetime.date.today().strftime("%d/%m/%Y"), largura=16)
+        self.campo_reuniao_data.pack(fill="x")
+
+        linha1 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha1.pack(fill="x")
+        self.campo_reuniao_ano = CampoTexto(
+            linha1, "Ano letivo", str(datetime.date.today().year), largura=10)
+        self.campo_reuniao_ano.pack(side="left", padx=(0, 16))
+        self.campo_reuniao_fase = CampoTexto(linha1, "Fase (ex: 1º Período)", largura=16)
+        self.campo_reuniao_fase.pack(side="left", padx=(0, 16))
+        self.campo_reuniao_turma = CampoTexto(linha1, "Turma", largura=14)
+        self.campo_reuniao_turma.pack(side="left", padx=(0, 16))
+        self.campo_reuniao_turno = CampoTexto(linha1, "Turno", largura=16)
+        self.campo_reuniao_turno.pack(side="left")
+
+        self.campo_reuniao_ensino_projeto = CampoTexto(
+            cartao, "Ensino/Projeto (ex: Pré-Escola - 1º e 2º Períodos)", largura=50)
+        self.campo_reuniao_ensino_projeto.pack(fill="x")
+
+        tk.Label(cartao, text="Nomes dos alunos (um por linha)",
+                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        self.texto_reuniao_nomes = tk.Text(cartao, height=14, font=FONTE_PADRAO, relief="solid", bd=1,
+                                            highlightthickness=1, highlightbackground=COR_BORDA, wrap="word")
+        self.texto_reuniao_nomes.pack(fill="x", pady=(3, 10))
+
+        self.campo_reuniao_linhas_brancas = CampoTexto(
+            cartao, "Linhas em branco na tabela (se deixar os nomes em branco)", "25", largura=10)
+        self.campo_reuniao_linhas_brancas.pack(anchor="w", pady=(0, 10))
+
+        tk.Label(cartao,
+                 text="Preencha os dados de uma turma e clique em \"Gerar\". O programa\n"
+                      "vai perguntar se você quer adicionar outra turma - se disser que\n"
+                      "sim, troque a Turma e os Nomes dos alunos e clique em \"Gerar\" de\n"
+                      "novo. Repita até adicionar todas; no final ele junta tudo num\n"
+                      "único arquivo .docx, uma página por turma.",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 10))
+
+        btn_gerar = tk.Button(cartao, text="Gerar Lista de Reunião (.docx)", command=self._gerar_lista_reuniao,
+                               bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
+                               relief="flat", padx=20, pady=10, cursor="hand2")
+        btn_gerar.pack(anchor="w", pady=(10, 0))
+
+        self.turmas_acumuladas_reuniao = []
+        self.label_turmas_acumuladas_reuniao = tk.Label(
+            cartao, text="", bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left")
+        self.label_turmas_acumuladas_reuniao.pack(anchor="w", pady=(8, 0))
+
+        self.label_status_lista_reuniao = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
+        self.label_status_lista_reuniao.pack(anchor="w", pady=(8, 0))
+
+    def _atualizar_label_turmas_acumuladas_reuniao(self):
+        n = len(self.turmas_acumuladas_reuniao)
+        if n == 0:
+            self.label_turmas_acumuladas_reuniao.config(text="")
+        else:
+            nomes_turmas = ", ".join(t["turma"] for t in self.turmas_acumuladas_reuniao)
+            self.label_turmas_acumuladas_reuniao.config(
+                text=f"{n} turma(s) já adicionada(s), aguardando finalizar: {nomes_turmas}")
+
+    def _limpar_campos_turma_reuniao(self):
+        self.campo_reuniao_turma.set("")
+        self.texto_reuniao_nomes.delete("1.0", "end")
+
+    def _gerar_lista_reuniao(self):
+        if not self.config_escola.get("nome_escola"):
+            messagebox.showwarning(
+                "Dados da escola pendentes",
+                "Preencha e salve os Dados da Escola antes de gerar a lista de reunião.")
+            self._ir_para("escola")
+            return
+
+        turma = self.campo_reuniao_turma.get()
+        if not turma:
+            messagebox.showwarning("Campo obrigatório", "Preencha a Turma.")
+            return
+
+        try:
+            linhas_brancas = int(self.campo_reuniao_linhas_brancas.get() or "25")
+        except ValueError:
+            linhas_brancas = 25
+
+        dados_turma_atual = {
+            "tipo_reuniao": self.campo_reuniao_tipo.get(),
+            "data_reuniao": self.campo_reuniao_data.get(),
+            "ano_letivo": self.campo_reuniao_ano.get(),
+            "ensino_projeto": self.campo_reuniao_ensino_projeto.get(),
+            "fase": self.campo_reuniao_fase.get(),
+            "turno": self.campo_reuniao_turno.get(),
+            "turma": turma,
+            "nomes_alunos": self.texto_reuniao_nomes.get("1.0", "end").strip(),
+            "linhas_em_branco": linhas_brancas,
+        }
+        self.turmas_acumuladas_reuniao.append(dados_turma_atual)
+        self._atualizar_label_turmas_acumuladas_reuniao()
+
+        quer_mais = messagebox.askyesno(
+            "Adicionar outra turma?",
+            f"Turma \"{turma}\" adicionada ({len(self.turmas_acumuladas_reuniao)} turma(s) até agora).\n\n"
+            "Deseja preencher e adicionar outra turma antes de gerar o arquivo?")
+        if quer_mais:
+            self._limpar_campos_turma_reuniao()
+            return
+
+        turmas = self.turmas_acumuladas_reuniao
+        if len(turmas) == 1:
+            nome_sugerido = f"Lista de Reuniao - Turma {turmas[0]['turma']}.docx"
+        else:
+            nome_sugerido = "Lista de Reuniao - Varias Turmas.docx"
+
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar lista de reunião",
+            initialfile=nome_sugerido,
+            defaultextension=".docx",
+            filetypes=[("Documento Word", "*.docx")])
+        if not caminho:
+            # cancelou o salvamento - desfaz a adicao dessa turma pra nao
+            # duplicar se a pessoa clicar em Gerar de novo
+            self.turmas_acumuladas_reuniao.pop()
+            self._atualizar_label_turmas_acumuladas_reuniao()
+            return
+
+        try:
+            if len(turmas) == 1:
+                documentos.gerar_lista_reuniao(self.config_escola, turmas[0], caminho)
+            else:
+                documentos.gerar_lista_reuniao_varias_turmas(self.config_escola, {}, turmas, caminho)
+        except Exception as e:
+            messagebox.showerror("Erro ao gerar lista de reunião", str(e))
+            return
+
+        self.turmas_acumuladas_reuniao = []
+        self._atualizar_label_turmas_acumuladas_reuniao()
+        self._limpar_campos_turma_reuniao()
+
+        self.label_status_lista_reuniao.config(text=f"Lista de reunião gerada: {os.path.basename(caminho)}")
+        if messagebox.askyesno(
+                "Lista de reunião gerada",
+                "Lista de reunião gerada com sucesso. Deseja abrir o arquivo agora?"):
             try:
                 os.startfile(caminho)
             except Exception:

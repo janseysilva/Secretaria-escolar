@@ -1142,3 +1142,121 @@ def gerar_ficha_matricula(dados_escola, dados_ficha, caminho_saida):
 
     document.save(caminho_saida)
     return caminho_saida
+
+
+def _secao_lista_reuniao(document, dados_escola, dados_lista):
+    """Desenha uma secao completa (cabecalho + titulo + identificacao da
+    turma + tabela de alunos) no documento - usada tanto pra uma lista de
+    turma unica quanto, repetida com quebra de pagina entre cada chamada,
+    pra gerar varias turmas dentro do MESMO arquivo (ver
+    gerar_lista_reuniao_varias_turmas)."""
+    # --- Cabecalho: logo + secretaria, e tabela com os dados da escola ---
+    _cabecalho_logo_e_secretaria(document, dados_escola)
+    document.add_paragraph()
+    _tabela_dados_escola(document, dados_escola)
+    document.add_paragraph()
+
+    # --- Barra de titulo: data + tipo de reuniao/lista ---
+    data_reuniao = (dados_lista.get("data_reuniao") or "").strip()
+    tipo_reuniao = (dados_lista.get("tipo_reuniao") or "").strip() or "Reunião de Pais e Alunos"
+    titulo = f"{data_reuniao} – {tipo_reuniao.upper()}" if data_reuniao else tipo_reuniao.upper()
+    _titulo_secao_ficha(document, titulo)
+
+    # --- Identificacao da turma ---
+    _linha_campos(document, [
+        ("Ano", dados_lista.get("ano_letivo", "")),
+        ("Ensino/Projeto", dados_lista.get("ensino_projeto", "")),
+        ("Fase", dados_lista.get("fase", "")),
+        ("Turma", dados_lista.get("turma", "")),
+        ("Turno", dados_lista.get("turno", "")),
+    ], larguras=[2.0, 6.5, 4.0, 3.0, 3.0])
+
+    # --- Tabela de alunos: Nº | Nome do Aluno | Data | Assinatura ---
+    # Fonte menor e margens de celula mais estreitas que o padrao (so aqui,
+    # pra caber uma turma cheia numa pagina so - o resto do documento usa
+    # o tamanho normal).
+    TAM_TABELA_ALUNOS = 10
+    nomes = [linha.strip() for linha in (dados_lista.get("nomes_alunos") or "").split("\n") if linha.strip()]
+    if nomes:
+        linhas_tabela = len(nomes) + 3  # nomes + margem extra pra acrescentar aluno depois
+    else:
+        # sem nomes (ex: essa turma ainda nao teve a lista preenchida) -
+        # tabela sai em branco, com a quantidade de linhas pedida.
+        try:
+            linhas_tabela = int(dados_lista.get("linhas_em_branco") or 3)
+        except (TypeError, ValueError):
+            linhas_tabela = 3
+    total_linhas = linhas_tabela + 1  # +1 pro cabecalho da tabela
+
+    tabela = document.add_table(rows=total_linhas, cols=4)
+    tabela.style = "Table Grid"
+    larguras_tabela = [1.3, 9.5, 2.2, 5.5]  # nome mais largo - nome completo com 2 sobrenomes nao quebra linha
+    _definir_largura_colunas(tabela, larguras_tabela)
+    _definir_margens_celulas(tabela, cima_cm=0.08, baixo_cm=0.08, esquerda_cm=0.15, direita_cm=0.15)
+
+    for celula, texto in zip(tabela.rows[0].cells, ["Nº", "Nome do Aluno", "Data", "Assinatura do Responsável"]):
+        celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _paragrafo(celula, texto, negrito=True, tamanho=TAM_TABELA_ALUNOS, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    for i in range(linhas_tabela):
+        linha_tabela = tabela.rows[i + 1]
+        cel_num, cel_nome, cel_data, cel_assinatura = linha_tabela.cells
+        for c in (cel_num, cel_nome, cel_data, cel_assinatura):
+            c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _paragrafo(cel_num, f"{i + 1:03d}", tamanho=TAM_TABELA_ALUNOS, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+        if i < len(nomes):
+            _paragrafo(cel_nome, nomes[i], tamanho=TAM_TABELA_ALUNOS)
+
+
+def gerar_lista_reuniao(dados_escola, dados_lista, caminho_saida):
+    """Gera uma Lista de Reunião de Pais e Alunos (.docx), adaptada de um
+    modelo real de lista de assinatura usado pela SEMED Manaus (a mesma
+    estrutura serve pra outras listas tipo "entrega de livros" - aqui fixada
+    pra reunião de pais). Cabecalho generico igual aos outros documentos
+    (nao usa os campos especificos de Manaus do modelo original, como
+    INEP/Ato de Criacao, pra continuar servindo qualquer escola do Brasil).
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
+        telefone, email.
+    dados_lista: dict com tipo_reuniao (texto livre, ex: "Reunião de Pais e
+        Alunos" ou "Entrega de Livros"), data_reuniao (texto livre, ex:
+        "21/08/2025"), ano_letivo, ensino_projeto (texto livre, ex:
+        "Pré-Escola - 1º e 2º Períodos"), fase (texto livre, ex: "1º
+        Período"), turma (texto livre, ex: "G"), turno (texto livre, ex:
+        "Vespertino"), nomes_alunos (texto com um nome de aluno por linha -
+        se vazio, a tabela sai em branco com linhas_em_branco linhas pra
+        preencher a mao), linhas_em_branco (numero de linhas da tabela
+        quando nomes_alunos estiver vazio, padrao 3).
+    """
+    document = docx.Document()
+    _config_secao(document)
+    _set_fonte_padrao(document)
+    _secao_lista_reuniao(document, dados_escola, dados_lista)
+    document.save(caminho_saida)
+    return caminho_saida
+
+
+def gerar_lista_reuniao_varias_turmas(dados_escola, dados_comuns, turmas, caminho_saida):
+    """Gera UM UNICO .docx com uma pagina por turma (cabecalho + titulo +
+    tabela repetidos, com quebra de pagina entre elas) - pra quando a mesma
+    reuniao/lista precisa sair pra varias turmas de uma vez, sem gerar um
+    arquivo separado pra cada uma.
+
+    dados_comuns: mesmos campos de dados_lista em gerar_lista_reuniao, MENOS
+        turma/nomes_alunos/linhas_em_branco (que vem de cada item de turmas).
+    turmas: lista de dicts, cada um com turma (texto), nomes_alunos (texto,
+        pode ser vazio) e opcionalmente linhas_em_branco.
+    """
+    document = docx.Document()
+    _config_secao(document)
+    _set_fonte_padrao(document)
+
+    for indice, dados_turma in enumerate(turmas):
+        if indice > 0:
+            document.add_page_break()
+        dados_lista = dict(dados_comuns)
+        dados_lista.update(dados_turma)
+        _secao_lista_reuniao(document, dados_escola, dados_lista)
+
+    document.save(caminho_saida)
+    return caminho_saida
