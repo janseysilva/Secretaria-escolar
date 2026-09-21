@@ -1469,3 +1469,349 @@ def gerar_lista_frequencia_varias_turmas(dados_escola, dados_comuns, turmas, cam
 
     document.save(caminho_saida)
     return caminho_saida
+
+
+def gerar_justificativa_faltas(dados_escola, dados_justificativa, caminho_saida):
+    """Gera uma Justificativa de Excesso de Faltas (.docx) - documento
+    preenchido/assinado QUANDO o responsável comparece à escola pra
+    explicar o excesso de faltas do aluno (diferente de uma notificação
+    que a escola manda pedindo pra ele comparecer - aqui ele já está lá,
+    dando a justificativa). O percentual mínimo exigido muda conforme a
+    etapa: 60% na Educação Infantil, 75% do 1º ano do Ensino Fundamental
+    em diante (conforme a LDB, Lei nº 9.394/96, art. 24, inciso VI).
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
+        telefone, email.
+    dados_justificativa: dict com nome_aluno, turma, etapa_ensino
+        ("infantil" -> mínimo 60%, qualquer outro valor -> mínimo 75%),
+        turno, nome_responsavel, periodo (texto livre, ex: "Agosto/2026"),
+        dias_letivos (texto/num), faltas (texto/num), motivo ("doenca_aluno"/
+        "doenca_familia"/"mudanca_endereco"/"transporte"/"trabalho_renda"/
+        "outro"), motivo_outro (texto - só usado quando motivo == "outro"),
+        observacoes (texto livre, opcional), data (já formatada por
+        extenso), recebido_por (nome de quem atendeu na escola),
+        cargo_recebido_por.
+    """
+    document = docx.Document()
+    _config_secao_oficio(document)
+    _set_fonte_padrao(document)
+
+    # --- Cabecalho: logo + secretaria, e tabela com os dados da escola ---
+    _cabecalho_logo_e_secretaria(document, dados_escola)
+    document.add_paragraph()
+    _tabela_dados_escola(document, dados_escola)
+    document.add_paragraph()
+
+    _paragrafo(document, "JUSTIFICATIVA DE EXCESSO DE FALTAS", negrito=True, tamanho=TAM_TITULO,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    document.add_paragraph()
+
+    # --- Identificacao do aluno ---
+    _linha_campos(document, [
+        ("Nome do aluno", dados_justificativa.get("nome_aluno", "")),
+        ("Turma", dados_justificativa.get("turma", "")),
+        ("Turno", dados_justificativa.get("turno", "")),
+        ("Responsável", dados_justificativa.get("nome_responsavel", "")),
+    ], larguras=[6.0, 2.5, 2.5, 5.0])
+
+    etapa = dados_justificativa.get("etapa_ensino") or "infantil"
+    percentual_minimo = 60 if etapa == "infantil" else 75
+    _linha_campos(document, [
+        ("Etapa de ensino", "Educação Infantil" if etapa == "infantil" else "Ensino Fundamental em diante"),
+        ("Período de referência", dados_justificativa.get("periodo", "")),
+    ], larguras=[8.0, 8.0])
+
+    # --- Dados de frequencia (percentual apurado calculado automaticamente) ---
+    dias_texto = (dados_justificativa.get("dias_letivos") or "").strip()
+    faltas_texto = (dados_justificativa.get("faltas") or "").strip()
+    percentual_texto = ""
+    try:
+        dias_num = int(dias_texto)
+        faltas_num = int(faltas_texto)
+        if dias_num > 0:
+            percentual_texto = f"{round((dias_num - faltas_num) / dias_num * 100, 1):g}%"
+    except (TypeError, ValueError):
+        pass
+
+    _linha_campos(document, [
+        ("Dias letivos no período", dias_texto),
+        ("Faltas no período", faltas_texto),
+        ("% apurado", percentual_texto),
+        ("% mínimo exigido", f"{percentual_minimo}%"),
+    ], larguras=[4.0, 4.0, 4.0, 4.0])
+
+    document.add_paragraph()
+
+    # --- Corpo: contextualizacao + compromisso, tudo num paragrafo so ---
+    p_corpo = document.add_paragraph()
+    p_corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    p_corpo.paragraph_format.first_line_indent = Cm(1.25)
+    run_corpo = p_corpo.add_run(
+        "O(a) responsável acima identificado(a) compareceu a esta unidade escolar para "
+        "justificar o excesso de faltas do(a) aluno(a) acima identificado(a), que "
+        f"apresentou frequência de {percentual_texto or '____'} no período informado, abaixo "
+        f"do mínimo de {percentual_minimo}% exigido pela legislação vigente (LDB - Lei nº "
+        "9.394/96, art. 24, inciso VI), declarando que as informações prestadas são "
+        "verdadeiras e comprometendo-se a garantir a frequência regular do(a) aluno(a) nos "
+        "dias letivos subsequentes, ciente de que a reincidência poderá acarretar o "
+        "encaminhamento do caso ao Conselho Tutelar (ECA - Lei nº 8.069/90) e comprometer a "
+        "manutenção de benefícios sociais vinculados à frequência, como o Bolsa Família."
+    )
+    run_corpo.font.name = FONTE
+    run_corpo.font.size = Pt(TAM_NORMAL)
+
+    document.add_paragraph()
+
+    motivo = dados_justificativa.get("motivo") or ""
+    motivo_outro = (dados_justificativa.get("motivo_outro") or "").strip()
+    opcoes_motivo = [
+        ("Doença do(a) aluno(a)", motivo == "doenca_aluno"),
+        ("Doença/problema de saúde na família", motivo == "doenca_familia"),
+        ("Mudança de endereço/dificuldade de acesso", motivo == "mudanca_endereco"),
+        ("Dificuldade de transporte", motivo == "transporte"),
+        ("Motivo de trabalho/renda familiar", motivo == "trabalho_renda"),
+        (f"Outro: {motivo_outro}" if motivo == "outro" and motivo_outro else "Outro", motivo == "outro"),
+    ]
+
+    _linha_campos(document, [
+        ("Motivo apresentado pelo(a) responsável", opcoes_motivo),
+    ], larguras=[16.0])
+
+    document.add_paragraph()
+
+    # --- OBS ---
+    obs = (dados_justificativa.get("observacoes") or "").strip()
+    p_obs = document.add_paragraph()
+    r1 = p_obs.add_run("Observações: ")
+    r1.bold = True
+    r1.font.name = FONTE
+    r1.font.size = Pt(TAM_NORMAL)
+    if obs:
+        r2 = p_obs.add_run(obs)
+        r2.font.name = FONTE
+        r2.font.size = Pt(TAM_NORMAL)
+    else:
+        _linha_com_borda_inferior(document)
+
+    document.add_paragraph()
+
+    data = (dados_justificativa.get("data") or "").strip()
+    if data:
+        _paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+
+    # --- Assinaturas: Responsavel e quem atendeu na escola, lado a lado ---
+    tabela_assinatura = document.add_table(rows=2, cols=2)
+    _remover_bordas_tabela(tabela_assinatura)
+    _definir_largura_colunas(tabela_assinatura, [8.0, 8.0])
+
+    _linha_com_borda_inferior(tabela_assinatura.cell(0, 0))
+    _linha_com_borda_inferior(tabela_assinatura.cell(0, 1))
+
+    p_resp = _paragrafo(tabela_assinatura.cell(1, 0), "Assinatura do responsável",
+                         alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_resp.runs[0].italic = True
+
+    recebido_por = (dados_justificativa.get("recebido_por") or "").strip()
+    cargo_recebido = (dados_justificativa.get("cargo_recebido_por") or "").strip()
+    rotulo_escola = recebido_por or "Assinatura de quem atendeu"
+    if recebido_por and cargo_recebido:
+        rotulo_escola = f"{recebido_por} - {cargo_recebido}"
+    p_esc = _paragrafo(tabela_assinatura.cell(1, 1), rotulo_escola, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_esc.runs[0].italic = True
+
+    document.save(caminho_saida)
+    return caminho_saida
+
+
+def _borda_pagina(document, cor_hex="2F528F", espessura_pt=18, estilo="double"):
+    """Desenha uma borda decorativa ao redor da pagina inteira - usado no
+    Certificado, pra dar a cara de "diploma" em vez de carta comum."""
+    secao = document.sections[0]
+    sectPr = secao._sectPr
+    bordas = OxmlElement("w:pgBorders")
+    bordas.set(qn("w:offsetFrom"), "page")
+    for nome in ("top", "left", "bottom", "right"):
+        borda = OxmlElement(f"w:{nome}")
+        borda.set(qn("w:val"), estilo)
+        borda.set(qn("w:sz"), str(espessura_pt))
+        borda.set(qn("w:space"), "24")
+        borda.set(qn("w:color"), cor_hex)
+        bordas.append(borda)
+    sectPr.append(bordas)
+
+
+def gerar_certificado(dados_escola, dados_certificado, caminho_saida):
+    """Gera um Certificado de Conclusão (.docx) - documento genérico pra
+    qualquer etapa/série concluída (Educação Infantil, Ensino Fundamental
+    etc.), com uma borda decorativa na página pra dar a cara de diploma.
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
+        telefone, email, assinatura_path.
+    dados_certificado: dict com nome_aluno, etapa_concluida (texto livre,
+        ex: "Educação Infantil", "5º Ano do Ensino Fundamental"), ano_letivo,
+        turma (opcional), data (já formatada por extenso), assinado_por
+        (nome de quem assina - só aparece se a escola não tem imagem de
+        assinatura cadastrada), cargo_assinado_por (opcional).
+    """
+    document = docx.Document()
+    _config_secao_oficio(document)
+    _set_fonte_padrao(document)
+    _borda_pagina(document)
+
+    _cabecalho_logo_e_secretaria(document, dados_escola)
+    document.add_paragraph()
+    _tabela_dados_escola(document, dados_escola)
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    _paragrafo(document, "CERTIFICADO", negrito=True, tamanho=TAM_TITULO + 6,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    nome_aluno = (dados_certificado.get("nome_aluno") or "_" * 45).strip() or "_" * 45
+    etapa = (dados_certificado.get("etapa_concluida") or "_" * 30).strip() or "_" * 30
+    ano_letivo = (dados_certificado.get("ano_letivo") or "____").strip() or "____"
+    turma = (dados_certificado.get("turma") or "").strip()
+    trecho_turma = f", na turma {turma}" if turma else ""
+
+    texto_corpo = (
+        f"Certificamos que {nome_aluno} concluiu com aproveitamento "
+        f"{etapa}, no ano letivo de {ano_letivo}{trecho_turma}, nesta unidade de ensino, "
+        "fazendo jus ao presente certificado."
+    )
+    p_corpo = document.add_paragraph()
+    p_corpo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_corpo = p_corpo.add_run(texto_corpo)
+    run_corpo.font.name = FONTE
+    run_corpo.font.size = Pt(TAM_NORMAL + 1)
+
+    document.add_paragraph()
+    document.add_paragraph()
+    document.add_paragraph()
+    document.add_paragraph()
+
+    if dados_escola.get("assinatura_path"):
+        _imagem_centralizada(document, dados_escola["assinatura_path"], 3.0)
+    else:
+        assinado_por = (dados_certificado.get("assinado_por") or "").strip()
+        if assinado_por:
+            _paragrafo(document, assinado_por, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+            cargo_assina = (dados_certificado.get("cargo_assinado_por") or "").strip()
+            if cargo_assina:
+                _paragrafo(document, cargo_assina, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+
+    data = (dados_certificado.get("data") or "").strip()
+    if data:
+        _paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.save(caminho_saida)
+    return caminho_saida
+
+
+LARGURA_UTIL_HISTORICO_CM = 18.5  # mesma largura util do retrato (margens estreitas)
+
+
+def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
+    """Gera um Histórico Escolar (.docx) - identificação do aluno + uma
+    tabela com o registro de escolaridade (um ano letivo por linha).
+
+    dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
+        telefone, email, assinatura_path, cidade.
+    dados_historico: dict com nome_aluno, data_nascimento, nome_mae,
+        nome_pai, naturalidade, nacionalidade, registros (lista de dicts,
+        cada um com ano_letivo, etapa, turma, carga_horaria, resultado -
+        linhas em branco no fim sao ignoradas), data (já formatada por
+        extenso), assinado_por, cargo_assinado_por.
+    """
+    document = docx.Document()
+    _config_secao(document)
+    _set_fonte_padrao(document)
+
+    _cabecalho_logo_e_secretaria(document, dados_escola)
+    document.add_paragraph()
+    _tabela_dados_escola(document, dados_escola)
+    document.add_paragraph()
+
+    _titulo_secao_ficha(document, "HISTÓRICO ESCOLAR", largura_cm=LARGURA_UTIL_HISTORICO_CM)
+
+    # --- Identificacao do aluno ---
+    _linha_campos(document, [
+        ("Nome do aluno", dados_historico.get("nome_aluno", "")),
+        ("Data de nascimento", dados_historico.get("data_nascimento", "")),
+    ], larguras=[12.5, 6.0])
+    _linha_campos(document, [
+        ("Nome da mãe", dados_historico.get("nome_mae", "")),
+        ("Nome do pai", dados_historico.get("nome_pai", "")),
+    ], larguras=[9.25, 9.25])
+    _linha_campos(document, [
+        ("Naturalidade", dados_historico.get("naturalidade", "")),
+        ("Nacionalidade", dados_historico.get("nacionalidade", "")),
+    ], larguras=[9.25, 9.25])
+
+    document.add_paragraph()
+    _titulo_secao_ficha(document, "REGISTRO DE ESCOLARIDADE", largura_cm=LARGURA_UTIL_HISTORICO_CM)
+
+    # --- Tabela: Ano Letivo | Etapa/Série | Turma | Carga Horária | Resultado Final ---
+    registros = [r for r in (dados_historico.get("registros") or []) if (r.get("ano_letivo") or "").strip()]
+
+    tabela = document.add_table(rows=len(registros) + 1, cols=5)
+    tabela.style = "Table Grid"
+    larguras_tabela = [3.0, 6.0, 3.0, 3.5, 3.0]
+    _definir_largura_colunas(tabela, larguras_tabela)
+    _definir_margens_celulas(tabela)
+
+    cabecalhos = ["Ano Letivo", "Etapa/Série", "Turma", "Carga Horária", "Resultado Final"]
+    for celula, texto in zip(tabela.rows[0].cells, cabecalhos):
+        celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        _paragrafo(celula, texto, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    for i, registro in enumerate(registros):
+        linha_tabela = tabela.rows[i + 1]
+        valores = [
+            registro.get("ano_letivo", ""), registro.get("etapa", ""),
+            registro.get("turma", ""), registro.get("carga_horaria", ""),
+            registro.get("resultado", ""),
+        ]
+        for celula, valor in zip(linha_tabela.cells, valores):
+            celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            _paragrafo(celula, valor, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    if dados_escola.get("assinatura_path"):
+        _imagem_centralizada(document, dados_escola["assinatura_path"], 3.0)
+
+    p_declara = document.add_paragraph()
+    p_declara.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_declara = p_declara.add_run(
+        "Declaramos, para os devidos fins, que as informações acima refletem "
+        "fielmente os registros escolares constantes nos arquivos desta unidade de ensino.")
+    run_declara.font.name = FONTE
+    run_declara.font.size = Pt(TAM_NORMAL - 1)
+    run_declara.italic = True
+
+    document.add_paragraph()
+
+    data = (dados_historico.get("data") or "").strip()
+    if data:
+        _paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+
+    assinado_por = (dados_historico.get("assinado_por") or "").strip()
+    if assinado_por:
+        _paragrafo(document, assinado_por, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+        cargo_assina = (dados_historico.get("cargo_assinado_por") or "").strip()
+        if cargo_assina:
+            _paragrafo(document, cargo_assina, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.save(caminho_saida)
+    return caminho_saida

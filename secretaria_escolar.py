@@ -217,6 +217,9 @@ DOCUMENTOS_DISPONIVEIS = [
     ("ficha_matricula", "📝", "Ficha de Matrícula", True, "#993556"),
     ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", True, "#3B6D11"),
     ("lista_frequencia", "🗓️", "Lista de Frequência Escolar", True, "#0C447C"),
+    ("justificativa_faltas", "✍️", "Justificativa de Excesso de Faltas", True, "#A32D2D"),
+    ("certificado", "🏅", "Certificado de Conclusão", True, "#BA7517"),
+    ("historico_escolar", "📖", "Histórico Escolar", True, "#5F5E5A"),
 ]
 
 
@@ -307,7 +310,8 @@ class App(tk.Tk):
 
         self.paginas = {}
         for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro", "ficha_matricula",
-                     "lista_reuniao", "lista_frequencia", "bolsa"):
+                     "lista_reuniao", "lista_frequencia", "bolsa", "justificativa_faltas", "certificado",
+                     "historico_escolar"):
             frame = tk.Frame(self.container, bg=COR_FUNDO)
             frame.grid(row=0, column=0, sticky="nsew")
             self.paginas[nome] = frame
@@ -322,6 +326,9 @@ class App(tk.Tk):
         self._montar_pagina_lista_reuniao()
         self._montar_pagina_lista_frequencia()
         self._montar_pagina_bolsa()
+        self._montar_pagina_justificativa_faltas()
+        self._montar_pagina_certificado()
+        self._montar_pagina_historico_escolar()
 
     def _ir_para(self, nome, primeira_vez=False):
         if nome == "home":
@@ -332,35 +339,27 @@ class App(tk.Tk):
             else:
                 self._banner_boas_vindas.pack_forget()
         if nome == "oficio":
-            self._atualizar_data_oficio()
+            self._atualizar_data_auto(self.campo_data_oficio, "_ultima_data_oficio_auto")
         if nome == "declaracao":
-            self._atualizar_data_declaracao()
+            self._atualizar_data_auto(self.campo_data_declaracao, "_ultima_data_declaracao_auto")
         if nome == "capa_livro":
-            self._atualizar_data_capa_livro()
+            self._atualizar_data_auto(self.campo_data_capa_livro, "_ultima_data_capa_livro_auto")
+        if nome == "justificativa_faltas":
+            self._atualizar_data_auto(self.campo_data_justificativa, "_ultima_data_justificativa_auto")
+        if nome == "certificado":
+            self._atualizar_data_auto(self.campo_data_certificado, "_ultima_data_certificado_auto")
+        if nome == "historico_escolar":
+            self._atualizar_data_auto(self.campo_data_historico, "_ultima_data_historico_auto")
         self.paginas[nome].tkraise()
 
-    def _atualizar_data_oficio(self):
+    def _atualizar_data_auto(self, campo, atributo_ultimo):
         # So reescreve se o campo ainda estiver com o ultimo valor que o
         # proprio app preencheu sozinho - se o usuario editou a mao, nao mexe.
-        if self.campo_data_oficio.get() == getattr(self, "_ultima_data_oficio_auto", None):
+        if campo.get() == getattr(self, atributo_ultimo, None):
             cidade = (self.config_escola.get("cidade") or "").strip()
             novo_valor = data_por_extenso(cidade)
-            self.campo_data_oficio.set(novo_valor)
-            self._ultima_data_oficio_auto = novo_valor
-
-    def _atualizar_data_declaracao(self):
-        if self.campo_data_declaracao.get() == getattr(self, "_ultima_data_declaracao_auto", None):
-            cidade = (self.config_escola.get("cidade") or "").strip()
-            novo_valor = data_por_extenso(cidade)
-            self.campo_data_declaracao.set(novo_valor)
-            self._ultima_data_declaracao_auto = novo_valor
-
-    def _atualizar_data_capa_livro(self):
-        if self.campo_data_capa_livro.get() == getattr(self, "_ultima_data_capa_livro_auto", None):
-            cidade = (self.config_escola.get("cidade") or "").strip()
-            novo_valor = data_por_extenso(cidade)
-            self.campo_data_capa_livro.set(novo_valor)
-            self._ultima_data_capa_livro_auto = novo_valor
+            campo.set(novo_valor)
+            setattr(self, atributo_ultimo, novo_valor)
 
     # ---------------- Início (escolher documento) ----------------
     def _montar_pagina_home(self):
@@ -1983,6 +1982,414 @@ class App(tk.Tk):
                 "Relatório gerado com sucesso. Deseja abrir a pasta agora?"):
             try:
                 os.startfile(os.path.dirname(arquivos[0]))
+            except Exception:
+                pass
+
+    # ---------------- Notificação de Excesso de Faltas ----------------
+    def _montar_pagina_justificativa_faltas(self):
+        pagina = self.paginas["justificativa_faltas"]
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Nova justificativa de excesso de faltas", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 16))
+
+        tk.Label(cartao,
+                 text="Preenchido quando o(a) responsável comparece à escola para justificar\n"
+                      "o excesso de faltas do(a) aluno(a).",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9),
+                 justify="left").pack(anchor="w", pady=(0, 14))
+
+        self.campo_justificativa_aluno = CampoTexto(cartao, "Nome do aluno", largura=50)
+        self.campo_justificativa_aluno.pack(fill="x")
+
+        linha1 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha1.pack(fill="x")
+        self.campo_justificativa_turma = CampoTexto(linha1, "Turma", largura=12)
+        self.campo_justificativa_turma.pack(side="left", padx=(0, 16))
+        self.campo_justificativa_turno = CampoTexto(linha1, "Turno", largura=16)
+        self.campo_justificativa_turno.pack(side="left", padx=(0, 16))
+        self.campo_justificativa_responsavel = CampoTexto(linha1, "Nome do responsável", largura=30)
+        self.campo_justificativa_responsavel.pack(side="left")
+
+        linha2 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha2.pack(fill="x")
+        self.campo_justificativa_etapa = CampoOpcao(
+            linha2, "Etapa de ensino",
+            [("infantil", "Educação Infantil (mínimo 60%)"),
+             ("fundamental", "Ensino Fundamental em diante (mínimo 75%)")], largura=32)
+        self.campo_justificativa_etapa.pack(side="left", padx=(0, 16))
+        self.campo_justificativa_periodo = CampoTexto(linha2, "Período (ex: Agosto/2026)", largura=18)
+        self.campo_justificativa_periodo.pack(side="left")
+
+        linha3 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha3.pack(fill="x")
+        self.campo_justificativa_dias = CampoTexto(linha3, "Dias letivos no período", largura=14)
+        self.campo_justificativa_dias.pack(side="left", padx=(0, 16))
+        self.campo_justificativa_faltas = CampoTexto(linha3, "Faltas no período", largura=14)
+        self.campo_justificativa_faltas.pack(side="left")
+
+        self.campo_justificativa_motivo = CampoOpcao(
+            cartao, "Motivo apresentado pelo(a) responsável",
+            [("doenca_aluno", "Doença do(a) aluno(a)"),
+             ("doenca_familia", "Doença/problema de saúde na família"),
+             ("mudanca_endereco", "Mudança de endereço/dificuldade de acesso"),
+             ("transporte", "Dificuldade de transporte"),
+             ("trabalho_renda", "Motivo de trabalho/renda familiar"),
+             ("outro", "Outro")], largura=40)
+        self.campo_justificativa_motivo.pack(fill="x")
+
+        self.campo_justificativa_motivo_outro = CampoTexto(
+            cartao, "Descrição do motivo - só quando o motivo é Outro", largura=50)
+        self.campo_justificativa_motivo_outro.pack(fill="x")
+
+        self.campo_justificativa_obs = CampoTexto(cartao, "Observações (opcional)", largura=70)
+        self.campo_justificativa_obs.pack(fill="x")
+
+        self.campo_data_justificativa = CampoTexto(
+            cartao, "Local e data", data_por_extenso((self.config_escola.get("cidade") or "").strip()), largura=50)
+        self.campo_data_justificativa.pack(fill="x")
+        self._ultima_data_justificativa_auto = self.campo_data_justificativa.get()
+
+        self.campo_justificativa_recebido_por = CampoTexto(
+            cartao, "Recebido por (quem atendeu na escola)", self.config_escola.get("diretor_nome", ""),
+            largura=50)
+        self.campo_justificativa_recebido_por.pack(fill="x")
+        self.campo_justificativa_cargo = CampoTexto(
+            cartao, "Cargo", self.config_escola.get("diretor_cargo", ""), largura=30)
+        self.campo_justificativa_cargo.pack(fill="x")
+
+        btn_gerar = tk.Button(cartao, text="Gerar Justificativa (.docx)", command=self._gerar_justificativa_faltas,
+                               bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
+                               relief="flat", padx=20, pady=10, cursor="hand2")
+        btn_gerar.pack(anchor="w", pady=(10, 0))
+
+        self.label_status_justificativa = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
+        self.label_status_justificativa.pack(anchor="w", pady=(8, 0))
+
+    def _gerar_justificativa_faltas(self):
+        if not self.config_escola.get("nome_escola"):
+            messagebox.showwarning(
+                "Dados da escola pendentes",
+                "Preencha e salve os Dados da Escola antes de gerar a justificativa.")
+            self._ir_para("escola")
+            return
+
+        aluno = self.campo_justificativa_aluno.get()
+        if not aluno:
+            messagebox.showwarning("Campo obrigatório", "Preencha o nome do aluno.")
+            return
+
+        dados_justificativa = {
+            "nome_aluno": aluno,
+            "turma": self.campo_justificativa_turma.get(),
+            "turno": self.campo_justificativa_turno.get(),
+            "nome_responsavel": self.campo_justificativa_responsavel.get(),
+            "etapa_ensino": self.campo_justificativa_etapa.get(),
+            "periodo": self.campo_justificativa_periodo.get(),
+            "dias_letivos": self.campo_justificativa_dias.get(),
+            "faltas": self.campo_justificativa_faltas.get(),
+            "motivo": self.campo_justificativa_motivo.get(),
+            "motivo_outro": self.campo_justificativa_motivo_outro.get(),
+            "observacoes": self.campo_justificativa_obs.get(),
+            "data": self.campo_data_justificativa.get(),
+            "recebido_por": self.campo_justificativa_recebido_por.get(),
+            "cargo_recebido_por": self.campo_justificativa_cargo.get(),
+        }
+
+        nome_sugerido = f"Justificativa de Faltas - {aluno}.docx"
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar justificativa de excesso de faltas",
+            initialfile=nome_sugerido,
+            defaultextension=".docx",
+            filetypes=[("Documento Word", "*.docx")])
+        if not caminho:
+            return
+
+        try:
+            documentos.gerar_justificativa_faltas(self.config_escola, dados_justificativa, caminho)
+        except Exception as e:
+            messagebox.showerror("Erro ao gerar justificativa", str(e))
+            return
+
+        self.label_status_justificativa.config(text=f"Justificativa gerada: {os.path.basename(caminho)}")
+        if messagebox.askyesno(
+                "Justificativa gerada",
+                "Justificativa gerada com sucesso. Deseja abrir o arquivo agora?"):
+            try:
+                os.startfile(caminho)
+            except Exception:
+                pass
+
+    # ---------------- Certificado de Conclusão ----------------
+    def _montar_pagina_certificado(self):
+        pagina = self.paginas["certificado"]
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Novo certificado de conclusão", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 16))
+
+        self.campo_certificado_aluno = CampoTexto(cartao, "Nome do aluno", largura=50)
+        self.campo_certificado_aluno.pack(fill="x")
+
+        self.campo_certificado_etapa = CampoTexto(
+            cartao, "Etapa concluída (ex: Educação Infantil, 5º Ano do Ensino Fundamental)", largura=50)
+        self.campo_certificado_etapa.pack(fill="x")
+
+        linha1 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha1.pack(fill="x")
+        self.campo_certificado_ano = CampoTexto(
+            linha1, "Ano letivo", str(datetime.date.today().year), largura=10)
+        self.campo_certificado_ano.pack(side="left", padx=(0, 16))
+        self.campo_certificado_turma = CampoTexto(linha1, "Turma (opcional)", largura=14)
+        self.campo_certificado_turma.pack(side="left")
+
+        self.campo_data_certificado = CampoTexto(
+            cartao, "Local e data", data_por_extenso((self.config_escola.get("cidade") or "").strip()), largura=50)
+        self.campo_data_certificado.pack(fill="x")
+        self._ultima_data_certificado_auto = self.campo_data_certificado.get()
+
+        self.campo_certificado_assinado_por = CampoTexto(
+            cartao, "Assinado por", self.config_escola.get("diretor_nome", ""), largura=50)
+        self.campo_certificado_assinado_por.pack(fill="x")
+        self.campo_certificado_cargo = CampoTexto(
+            cartao, "Cargo", self.config_escola.get("diretor_cargo", ""), largura=30)
+        self.campo_certificado_cargo.pack(fill="x")
+
+        tk.Label(cartao,
+                 text="Sai com uma borda decorativa ao redor da página, pra dar a cara de\n"
+                      "certificado/diploma.",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9),
+                 justify="left").pack(anchor="w", pady=(10, 10))
+
+        btn_gerar = tk.Button(cartao, text="Gerar Certificado (.docx)", command=self._gerar_certificado,
+                               bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
+                               relief="flat", padx=20, pady=10, cursor="hand2")
+        btn_gerar.pack(anchor="w", pady=(10, 0))
+
+        self.label_status_certificado = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
+        self.label_status_certificado.pack(anchor="w", pady=(8, 0))
+
+    def _gerar_certificado(self):
+        if not self.config_escola.get("nome_escola"):
+            messagebox.showwarning(
+                "Dados da escola pendentes",
+                "Preencha e salve os Dados da Escola antes de gerar o certificado.")
+            self._ir_para("escola")
+            return
+
+        aluno = self.campo_certificado_aluno.get()
+        if not aluno:
+            messagebox.showwarning("Campo obrigatório", "Preencha o nome do aluno.")
+            return
+
+        dados_certificado = {
+            "nome_aluno": aluno,
+            "etapa_concluida": self.campo_certificado_etapa.get(),
+            "ano_letivo": self.campo_certificado_ano.get(),
+            "turma": self.campo_certificado_turma.get(),
+            "data": self.campo_data_certificado.get(),
+            "assinado_por": self.campo_certificado_assinado_por.get(),
+            "cargo_assinado_por": self.campo_certificado_cargo.get(),
+        }
+
+        nome_sugerido = f"Certificado - {aluno}.docx"
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar certificado",
+            initialfile=nome_sugerido,
+            defaultextension=".docx",
+            filetypes=[("Documento Word", "*.docx")])
+        if not caminho:
+            return
+
+        try:
+            documentos.gerar_certificado(self.config_escola, dados_certificado, caminho)
+        except Exception as e:
+            messagebox.showerror("Erro ao gerar certificado", str(e))
+            return
+
+        self.label_status_certificado.config(text=f"Certificado gerado: {os.path.basename(caminho)}")
+        if messagebox.askyesno(
+                "Certificado gerado",
+                "Certificado gerado com sucesso. Deseja abrir o arquivo agora?"):
+            try:
+                os.startfile(caminho)
+            except Exception:
+                pass
+
+    # ---------------- Histórico Escolar ----------------
+    def _montar_pagina_historico_escolar(self):
+        pagina = self.paginas["historico_escolar"]
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Novo histórico escolar", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 16))
+
+        self.campo_historico_aluno = CampoTexto(cartao, "Nome do aluno", largura=50)
+        self.campo_historico_aluno.pack(fill="x")
+
+        linha1 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha1.pack(fill="x")
+        self.campo_historico_nascimento = CampoTexto(linha1, "Data de nascimento", largura=16)
+        self.campo_historico_nascimento.pack(side="left", padx=(0, 16))
+        self.campo_historico_naturalidade = CampoTexto(linha1, "Naturalidade", largura=20)
+        self.campo_historico_naturalidade.pack(side="left", padx=(0, 16))
+        self.campo_historico_nacionalidade = CampoTexto(linha1, "Nacionalidade", "Brasileira", largura=16)
+        self.campo_historico_nacionalidade.pack(side="left")
+
+        linha2 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha2.pack(fill="x")
+        self.campo_historico_mae = CampoTexto(linha2, "Nome da mãe", largura=30)
+        self.campo_historico_mae.pack(side="left", padx=(0, 16))
+        self.campo_historico_pai = CampoTexto(linha2, "Nome do pai", largura=30)
+        self.campo_historico_pai.pack(side="left")
+
+        separador = tk.Frame(cartao, bg=COR_BORDA, height=1)
+        separador.pack(fill="x", pady=(12, 12))
+
+        tk.Label(cartao, text="Registro de escolaridade (um ano letivo por linha)",
+                 bg=COR_CARTAO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
+
+        cabecalho_tabela = tk.Frame(cartao, bg=COR_CARTAO)
+        cabecalho_tabela.pack(fill="x")
+        for texto, largura in (("Ano Letivo", 8), ("Etapa/Série", 18), ("Turma", 8),
+                                ("Carga Horária", 12), ("Resultado Final", 16)):
+            tk.Label(cabecalho_tabela, text=texto, bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL,
+                     width=largura, anchor="w").pack(side="left", padx=(0, 4))
+
+        self.linhas_historico_escolar = []
+        frame_linhas = tk.Frame(cartao, bg=COR_CARTAO)
+        frame_linhas.pack(fill="x", pady=(3, 0))
+        for _ in range(8):
+            linha = tk.Frame(frame_linhas, bg=COR_CARTAO)
+            linha.pack(fill="x", pady=2)
+            campos = {}
+            for chave, largura in (("ano_letivo", 8), ("etapa", 18), ("turma", 8),
+                                    ("carga_horaria", 12), ("resultado", 16)):
+                var = tk.StringVar()
+                tk.Entry(linha, textvariable=var, font=FONTE_PADRAO, width=largura,
+                          relief="solid", bd=1, highlightthickness=1,
+                          highlightbackground=COR_BORDA).pack(side="left", padx=(0, 4))
+                campos[chave] = var
+            self.linhas_historico_escolar.append(campos)
+
+        self.campo_data_historico = CampoTexto(
+            cartao, "Local e data", data_por_extenso((self.config_escola.get("cidade") or "").strip()), largura=50)
+        self.campo_data_historico.pack(fill="x", pady=(12, 0))
+        self._ultima_data_historico_auto = self.campo_data_historico.get()
+
+        self.campo_historico_assinado_por = CampoTexto(
+            cartao, "Assinado por", self.config_escola.get("secretario_nome", ""), largura=50)
+        self.campo_historico_assinado_por.pack(fill="x")
+        self.campo_historico_cargo = CampoTexto(cartao, "Cargo", "Secretário(a) Escolar", largura=30)
+        self.campo_historico_cargo.pack(fill="x")
+
+        btn_gerar = tk.Button(cartao, text="Gerar Histórico Escolar (.docx)", command=self._gerar_historico_escolar,
+                               bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+                               activebackground=COR_AZUL_ESCURO, activeforeground="white",
+                               relief="flat", padx=20, pady=10, cursor="hand2")
+        btn_gerar.pack(anchor="w", pady=(16, 0))
+
+        self.label_status_historico = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
+        self.label_status_historico.pack(anchor="w", pady=(8, 0))
+
+    def _gerar_historico_escolar(self):
+        if not self.config_escola.get("nome_escola"):
+            messagebox.showwarning(
+                "Dados da escola pendentes",
+                "Preencha e salve os Dados da Escola antes de gerar o histórico.")
+            self._ir_para("escola")
+            return
+
+        aluno = self.campo_historico_aluno.get()
+        if not aluno:
+            messagebox.showwarning("Campo obrigatório", "Preencha o nome do aluno.")
+            return
+
+        registros = []
+        for campos in self.linhas_historico_escolar:
+            ano = campos["ano_letivo"].get().strip()
+            if not ano:
+                continue
+            registros.append({chave: var.get().strip() for chave, var in campos.items()})
+
+        dados_historico = {
+            "nome_aluno": aluno,
+            "data_nascimento": self.campo_historico_nascimento.get(),
+            "naturalidade": self.campo_historico_naturalidade.get(),
+            "nacionalidade": self.campo_historico_nacionalidade.get(),
+            "nome_mae": self.campo_historico_mae.get(),
+            "nome_pai": self.campo_historico_pai.get(),
+            "registros": registros,
+            "data": self.campo_data_historico.get(),
+            "assinado_por": self.campo_historico_assinado_por.get(),
+            "cargo_assinado_por": self.campo_historico_cargo.get(),
+        }
+
+        nome_sugerido = f"Historico Escolar - {aluno}.docx"
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar histórico escolar",
+            initialfile=nome_sugerido,
+            defaultextension=".docx",
+            filetypes=[("Documento Word", "*.docx")])
+        if not caminho:
+            return
+
+        try:
+            documentos.gerar_historico_escolar(self.config_escola, dados_historico, caminho)
+        except Exception as e:
+            messagebox.showerror("Erro ao gerar histórico escolar", str(e))
+            return
+
+        self.label_status_historico.config(text=f"Histórico escolar gerado: {os.path.basename(caminho)}")
+        if messagebox.askyesno(
+                "Histórico escolar gerado",
+                "Histórico escolar gerado com sucesso. Deseja abrir o arquivo agora?"):
+            try:
+                os.startfile(caminho)
             except Exception:
                 pass
 
