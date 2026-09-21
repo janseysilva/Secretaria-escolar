@@ -4,11 +4,13 @@ import json
 import os
 import shutil
 import sys
+import threading
 import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 import documentos
+import relatorio_bolsa_familia
 
 PASTA_BASE = os.path.dirname(os.path.abspath(__file__))
 PASTA_DADOS = os.path.join(PASTA_BASE, "dados_escola")
@@ -210,7 +212,7 @@ DOCUMENTOS_DISPONIVEIS = [
     ("memorando", "📄", "Memorando", True, "#185FA5"),
     ("oficio", "📋", "Ofício", True, "#0F6E56"),
     ("declaracao", "📃", "Declaração Escolar", True, "#534AB7"),
-    ("bolsa", "🎓", "Relatório do Bolsa Família", False, "#854F0B"),
+    ("bolsa", "🎓", "Relatório do Bolsa Família", True, "#854F0B"),
     ("capa_livro", "📚", "Capa de Abertura de Livro", True, "#993C1D"),
     ("ficha_matricula", "📝", "Ficha de Matrícula", True, "#993556"),
     ("lista_reuniao", "👥", "Lista de Reunião de Pais e Alunos", True, "#3B6D11"),
@@ -267,6 +269,19 @@ class App(tk.Tk):
         tk.Label(faixa, text="Documentos oficiais gerados na hora", bg=COR_AZUL_ESCURO,
                  fg="#BFE6D9", font=("Segoe UI", 9)).pack(side="left")
 
+    @staticmethod
+    def _botao_contorno(pai, texto, comando, cor, cor_hover_fundo):
+        """Botão com contorno fino colorido (moldura de 1px ao redor de um
+        botão sem borda própria - tkinter não tem "border-color" de verdade
+        num Button só, então a moldura é um Frame colorido por baixo)."""
+        moldura = tk.Frame(pai, bg=cor)
+        botao = tk.Button(moldura, text=texto, command=comando,
+                           bg=COR_CARTAO, fg=cor, font=("Segoe UI", 9, "bold"),
+                           activebackground=cor_hover_fundo, activeforeground=cor,
+                           relief="flat", bd=0, padx=13, pady=5, cursor="hand2")
+        botao.pack(padx=1, pady=1)
+        return moldura
+
     def _montar_rodape(self):
         rodape = tk.Frame(self, bg=COR_CARTAO, height=44)
         rodape.pack(fill="x", side="bottom")
@@ -275,14 +290,14 @@ class App(tk.Tk):
         borda = tk.Frame(rodape, bg=COR_BORDA, height=1)
         borda.pack(fill="x", side="top")
 
-        tk.Button(rodape, text="← Voltar ao início", command=lambda: self._ir_para("home"),
-                  bg=COR_CARTAO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
-                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
-                  relief="flat", cursor="hand2", bd=0).pack(side="left", padx=20)
-        tk.Button(rodape, text="⚙ Dados da escola", command=lambda: self._ir_para("escola"),
-                  bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), relief="flat",
-                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
-                  cursor="hand2", bd=0).pack(side="right", padx=20)
+        self._botao_contorno(
+            rodape, "← Voltar ao início", lambda: self._ir_para("home"),
+            COR_AZUL_ESCURO, "#E3F2ED",
+        ).pack(side="left", padx=20, pady=7)
+        self._botao_contorno(
+            rodape, "⚙ Dados da escola", lambda: self._ir_para("escola"),
+            "#8A8880", "#F1EFE8",
+        ).pack(side="right", padx=20, pady=7)
 
     def _montar_paginas(self):
         self.container = tk.Frame(self, bg=COR_FUNDO)
@@ -292,7 +307,7 @@ class App(tk.Tk):
 
         self.paginas = {}
         for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro", "ficha_matricula",
-                     "lista_reuniao", "lista_frequencia"):
+                     "lista_reuniao", "lista_frequencia", "bolsa"):
             frame = tk.Frame(self.container, bg=COR_FUNDO)
             frame.grid(row=0, column=0, sticky="nsew")
             self.paginas[nome] = frame
@@ -306,6 +321,7 @@ class App(tk.Tk):
         self._montar_pagina_ficha_matricula()
         self._montar_pagina_lista_reuniao()
         self._montar_pagina_lista_frequencia()
+        self._montar_pagina_bolsa()
 
     def _ir_para(self, nome, primeira_vez=False):
         if nome == "home":
@@ -1762,6 +1778,211 @@ class App(tk.Tk):
                 "Ficha de frequência gerada com sucesso. Deseja abrir o arquivo agora?"):
             try:
                 os.startfile(caminho)
+            except Exception:
+                pass
+
+    # ---------------- Relatório do Bolsa Família ----------------
+    def _montar_pagina_bolsa(self):
+        pagina = self.paginas["bolsa"]
+
+        canvas = tk.Canvas(pagina, bg=COR_FUNDO, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(pagina, orient="vertical", command=canvas.yview)
+        cartao_externo = tk.Frame(canvas, bg=COR_FUNDO)
+
+        cartao_externo.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        janela_canvas = canvas.create_window((0, 0), window=cartao_externo, anchor="nw")
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(janela_canvas, width=e.width))
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        cartao = tk.Frame(cartao_externo, bg=COR_CARTAO, padx=24, pady=20)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="Relatório do Bolsa Família", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 4))
+        tk.Label(cartao,
+                 text="Cruza as fichas de frequência (Gier ou por matéria) com a lista de\n"
+                      "alunos do Bolsa Família e calcula a % de presença de cada um - mesma\n"
+                      "lógica já usada no Relatório de Presença.",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9),
+                 justify="left").pack(anchor="w", pady=(0, 16))
+
+        tk.Label(cartao, text="Pastas dos meses (uma pasta por mês, com os PDFs de frequência)",
+                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+
+        moldura_lista = tk.Frame(cartao, bg=COR_CARTAO)
+        moldura_lista.pack(fill="x", pady=(4, 0))
+        rolagem_pastas = ttk.Scrollbar(moldura_lista)
+        rolagem_pastas.pack(side="right", fill="y")
+        self.lista_pastas_bolsa = tk.Listbox(
+            moldura_lista, height=4, font=FONTE_PADRAO, bg="#FAFBFD", relief="solid", bd=1,
+            highlightthickness=1, highlightbackground=COR_BORDA, activestyle="none",
+            yscrollcommand=rolagem_pastas.set)
+        self.lista_pastas_bolsa.pack(side="left", fill="x", expand=True)
+        rolagem_pastas.config(command=self.lista_pastas_bolsa.yview)
+
+        botoes_pastas = tk.Frame(cartao, bg=COR_CARTAO)
+        botoes_pastas.pack(fill="x", pady=(6, 16))
+        tk.Button(botoes_pastas, text="+ Adicionar pasta do mês...", command=self._adicionar_pasta_bolsa,
+                  bg="#E3F2ED", fg=COR_AZUL_ESCURO, font=("Segoe UI", 10, "bold"),
+                  activebackground="#CFEAE0", activeforeground=COR_AZUL_ESCURO,
+                  relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left")
+        tk.Button(botoes_pastas, text="Remover selecionada", command=self._remover_pasta_bolsa,
+                  bg=COR_FUNDO, fg="#B3261E", font=("Segoe UI", 10),
+                  activebackground="#F5C4C4", activeforeground="#B3261E",
+                  relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left", padx=(8, 0))
+
+        tk.Label(cartao, text="Lista de alunos do Bolsa Família (.docx ou formulário do MEC em .pdf)",
+                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        linha_lista = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_lista.pack(fill="x", pady=(4, 16))
+        self.var_lista_bolsa = tk.StringVar()
+        tk.Entry(linha_lista, textvariable=self.var_lista_bolsa, font=FONTE_PADRAO,
+                  relief="solid", bd=1, highlightthickness=1,
+                  highlightbackground=COR_BORDA).pack(side="left", fill="x", expand=True)
+        tk.Button(linha_lista, text="Selecionar arquivo...", command=self._escolher_lista_bolsa,
+                  bg=COR_FUNDO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+                  activebackground="#E3F2ED", activeforeground=COR_AZUL_ESCURO,
+                  relief="flat", padx=10, cursor="hand2").pack(side="left", padx=(8, 0))
+
+        linha_opcoes = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_opcoes.pack(fill="x", pady=(0, 4))
+        self.campo_percentual_bolsa = CampoTexto(
+            linha_opcoes, "Percentual mínimo de presença (%)", "60", largura=8)
+        self.campo_percentual_bolsa.pack(side="left", padx=(0, 24))
+
+        frame_formatos = tk.Frame(linha_opcoes, bg=COR_CARTAO)
+        frame_formatos.pack(side="left")
+        tk.Label(frame_formatos, text="Formatos pra salvar", bg=COR_CARTAO, fg=COR_TEXTO,
+                 font=FONTE_LABEL).pack(anchor="w")
+        linha_checks = tk.Frame(frame_formatos, bg=COR_CARTAO)
+        linha_checks.pack(anchor="w", pady=(3, 0))
+        self.var_formato_xlsx_bolsa = tk.BooleanVar(value=True)
+        self.var_formato_docx_bolsa = tk.BooleanVar(value=True)
+        self.var_formato_pdf_bolsa = tk.BooleanVar(value=True)
+        tk.Checkbutton(linha_checks, text="Excel (.xlsx)", variable=self.var_formato_xlsx_bolsa,
+                        bg=COR_CARTAO, font=FONTE_PADRAO).pack(side="left")
+        tk.Checkbutton(linha_checks, text="Word (.docx)", variable=self.var_formato_docx_bolsa,
+                        bg=COR_CARTAO, font=FONTE_PADRAO).pack(side="left", padx=(10, 0))
+        tk.Checkbutton(linha_checks, text="PDF (.pdf)", variable=self.var_formato_pdf_bolsa,
+                        bg=COR_CARTAO, font=FONTE_PADRAO).pack(side="left", padx=(10, 0))
+
+        self.btn_gerar_bolsa = tk.Button(
+            cartao, text="Gerar Relatório do Bolsa Família", command=self._gerar_relatorio_bolsa,
+            bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
+            activebackground=COR_AZUL_ESCURO, activeforeground="white",
+            relief="flat", padx=20, pady=10, cursor="hand2")
+        self.btn_gerar_bolsa.pack(anchor="w", pady=(16, 10))
+
+        tk.Label(cartao, text="Andamento", bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        self.texto_log_bolsa = tk.Text(
+            cartao, height=12, font=("Consolas", 9), relief="solid", bd=1,
+            highlightthickness=1, highlightbackground=COR_BORDA, wrap="word",
+            state="disabled", bg="#FAFBFD")
+        self.texto_log_bolsa.pack(fill="x", pady=(4, 0))
+
+    def _adicionar_pasta_bolsa(self):
+        pasta = filedialog.askdirectory(title="Escolha a pasta do mês (com os PDFs de frequência)")
+        if pasta:
+            self.lista_pastas_bolsa.insert("end", pasta)
+
+    def _remover_pasta_bolsa(self):
+        for indice in reversed(self.lista_pastas_bolsa.curselection()):
+            self.lista_pastas_bolsa.delete(indice)
+
+    def _escolher_lista_bolsa(self):
+        caminho = filedialog.askopenfilename(
+            title="Escolha a lista de alunos do Bolsa Família",
+            filetypes=[("Word ou PDF", "*.docx *.pdf"), ("Documento Word", "*.docx"), ("PDF", "*.pdf")])
+        if caminho:
+            self.var_lista_bolsa.set(caminho)
+
+    def _log_bolsa(self, mensagem):
+        self.texto_log_bolsa.config(state="normal")
+        self.texto_log_bolsa.insert("end", str(mensagem) + "\n")
+        self.texto_log_bolsa.see("end")
+        self.texto_log_bolsa.config(state="disabled")
+
+    def _gerar_relatorio_bolsa(self):
+        pastas = list(self.lista_pastas_bolsa.get(0, "end"))
+        arquivo_lista = self.var_lista_bolsa.get().strip()
+        if not pastas:
+            messagebox.showwarning("Campo obrigatório", "Adicione ao menos uma pasta de mês.")
+            return
+        if not arquivo_lista:
+            messagebox.showwarning(
+                "Campo obrigatório", "Escolha o arquivo da lista de alunos do Bolsa Família.")
+            return
+        try:
+            percentual_minimo = float(self.campo_percentual_bolsa.get().replace(",", "."))
+        except ValueError:
+            messagebox.showwarning("Campo inválido", "Preencha um percentual mínimo válido (ex: 60).")
+            return
+
+        formatos = []
+        if self.var_formato_xlsx_bolsa.get():
+            formatos.append("xlsx")
+        if self.var_formato_docx_bolsa.get():
+            formatos.append("docx")
+        if self.var_formato_pdf_bolsa.get():
+            formatos.append("pdf")
+        if not formatos:
+            messagebox.showwarning("Campo obrigatório", "Marque ao menos um formato pra salvar.")
+            return
+
+        self.texto_log_bolsa.config(state="normal")
+        self.texto_log_bolsa.delete("1.0", "end")
+        self.texto_log_bolsa.config(state="disabled")
+        self.btn_gerar_bolsa.config(state="disabled", text="Gerando...")
+
+        def log_thread_safe(mensagem):
+            self.after(0, self._log_bolsa, mensagem)
+
+        def worker():
+            try:
+                resultados, meses, resumo = relatorio_bolsa_familia.analisar(
+                    pastas, arquivo_lista, percentual_minimo, log=log_thread_safe)
+            except Exception as e:
+                self.after(0, self._erro_relatorio_bolsa, str(e))
+                return
+            self.after(0, self._pedir_salvar_relatorio_bolsa,
+                       resultados, meses, formatos, percentual_minimo)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _erro_relatorio_bolsa(self, mensagem):
+        self.btn_gerar_bolsa.config(state="normal", text="Gerar Relatório do Bolsa Família")
+        messagebox.showerror("Erro ao gerar relatório", mensagem)
+
+    def _pedir_salvar_relatorio_bolsa(self, resultados, meses, formatos, percentual_minimo):
+        self.btn_gerar_bolsa.config(state="normal", text="Gerar Relatório do Bolsa Família")
+        nome_sugerido = relatorio_bolsa_familia.sugerir_nome(meses)
+        primeiro_formato = formatos[0]
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar relatório como",
+            initialfile=f"{nome_sugerido}.{primeiro_formato}",
+            defaultextension=f".{primeiro_formato}",
+            filetypes=[("Documento", f"*.{primeiro_formato}")])
+        if not caminho:
+            self._log_bolsa("\nSalvamento cancelado.")
+            return
+
+        caminho_base = os.path.splitext(caminho)[0]
+        try:
+            arquivos = relatorio_bolsa_familia.salvar(
+                resultados, caminho_base, percentual_minimo, meses, formatos, log=self._log_bolsa)
+        except Exception as e:
+            messagebox.showerror("Erro ao salvar relatório", str(e))
+            return
+
+        self._log_bolsa("\nConcluído.")
+        if messagebox.askyesno(
+                "Relatório gerado",
+                "Relatório gerado com sucesso. Deseja abrir a pasta agora?"):
+            try:
+                os.startfile(os.path.dirname(arquivos[0]))
             except Exception:
                 pass
 
