@@ -71,6 +71,19 @@ def _config_secao_paisagem(document):
     secao.bottom_margin = Cm(0.6)
 
 
+def _config_secao_certificado(document):
+    """Pagina A4 na horizontal (paisagem), com margens mais generosas do
+    que _config_secao_paisagem - o Certificado sempre sai em paisagem,
+    formato tradicional de diploma."""
+    secao = document.sections[0]
+    secao.page_width = Cm(29.7)
+    secao.page_height = Cm(21)
+    secao.left_margin = Cm(2.5)
+    secao.right_margin = Cm(2.5)
+    secao.top_margin = Cm(2.0)
+    secao.bottom_margin = Cm(2.0)
+
+
 def _remover_bordas_tabela(tabela):
     tbl = tabela._tbl
     tblPr = tbl.tblPr
@@ -1642,25 +1655,33 @@ def _borda_pagina(document, cor_hex="2F528F", espessura_pt=18, estilo="double"):
     sectPr.append(bordas)
 
 
+LARGURA_UTIL_CERTIFICADO_CM = 29.7 - 2.5 - 2.5  # pagina em paisagem, margens de _config_secao_certificado
+
+
 def gerar_certificado(dados_escola, dados_certificado, caminho_saida):
     """Gera um Certificado de Conclusão (.docx) - documento genérico pra
     qualquer etapa/série concluída (Educação Infantil, Ensino Fundamental
     etc.), com uma borda decorativa na página pra dar a cara de diploma.
+    Assinaturas de Secretário(a) e Diretor(a) lado a lado, mais uma linha
+    de assinatura do(a) próprio(a) aluno(a) como concludente. Uma 2ª
+    página opcional registra a emissão no livro da escola (Registro/
+    Livro/Folha) - mesmo tipo de controle do Termo de Abertura de Livro.
 
     dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
-        telefone, email, assinatura_path.
+        telefone, email.
     dados_certificado: dict com nome_aluno, etapa_concluida (texto livre,
         ex: "Educação Infantil", "5º Ano do Ensino Fundamental"), ano_letivo,
-        turma (opcional), data (já formatada por extenso), assinado_por
-        (nome de quem assina - só aparece se a escola não tem imagem de
-        assinatura cadastrada), cargo_assinado_por (opcional).
+        turma (opcional), data (já formatada por extenso), secretario_nome,
+        diretor_nome, diretor_cargo, registro_numero, livro_numero, folha,
+        registrado_por, amparo_legal (todos os últimos 5 opcionais - só
+        pra 2ª página de registro no livro).
     """
     document = docx.Document()
-    _config_secao_oficio(document)
+    _config_secao_certificado(document)
     _set_fonte_padrao(document)
     _borda_pagina(document)
 
-    _cabecalho_logo_e_secretaria(document, dados_escola)
+    _cabecalho_logo_e_secretaria(document, dados_escola, largura_total_cm=LARGURA_UTIL_CERTIFICADO_CM)
     document.add_paragraph()
     _tabela_dados_escola(document, dados_escola)
 
@@ -1691,25 +1712,75 @@ def gerar_certificado(dados_escola, dados_certificado, caminho_saida):
     run_corpo.font.size = Pt(TAM_NORMAL + 1)
 
     document.add_paragraph()
-    document.add_paragraph()
-    document.add_paragraph()
-    document.add_paragraph()
-
-    if dados_escola.get("assinatura_path"):
-        _imagem_centralizada(document, dados_escola["assinatura_path"], 3.0)
-    else:
-        assinado_por = (dados_certificado.get("assinado_por") or "").strip()
-        if assinado_por:
-            _paragrafo(document, assinado_por, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
-            cargo_assina = (dados_certificado.get("cargo_assinado_por") or "").strip()
-            if cargo_assina:
-                _paragrafo(document, cargo_assina, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
-
-    document.add_paragraph()
 
     data = (dados_certificado.get("data") or "").strip()
     if data:
         _paragrafo(document, f"{data}.", alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+    document.add_paragraph()
+
+    # --- Assinaturas: Secretario(a) e Diretor(a) lado a lado ---
+    tabela_assinatura = document.add_table(rows=2, cols=2)
+    _remover_bordas_tabela(tabela_assinatura)
+    _definir_largura_colunas(tabela_assinatura, [LARGURA_UTIL_CERTIFICADO_CM / 2] * 2)
+
+    _linha_com_borda_inferior(tabela_assinatura.cell(0, 0))
+    _linha_com_borda_inferior(tabela_assinatura.cell(0, 1))
+
+    secretario_nome = (dados_certificado.get("secretario_nome") or "").strip()
+    p_sec = _paragrafo(tabela_assinatura.cell(1, 0), secretario_nome or "Secretário(a) Escolar",
+                        alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_sec.runs[0].italic = not secretario_nome
+    _paragrafo(tabela_assinatura.cell(1, 0), "SECRETÁRIO(A)", tamanho=TAM_NORMAL - 1,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    diretor_nome = (dados_certificado.get("diretor_nome") or "").strip()
+    p_dir = _paragrafo(tabela_assinatura.cell(1, 1), diretor_nome or "Diretor(a)",
+                        alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_dir.runs[0].italic = not diretor_nome
+    _paragrafo(tabela_assinatura.cell(1, 1), "DIRETOR(A)", tamanho=TAM_NORMAL - 1,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    document.add_paragraph()
+
+    # --- Assinatura do(a) proprio(a) aluno(a), como concludente ---
+    _linha_com_borda_inferior(document)
+    _paragrafo(document, nome_aluno, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    _paragrafo(document, "CONCLUDENTE", tamanho=TAM_NORMAL - 1, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    # --- 2a pagina: registro da emissao no livro da escola ---
+    registro_numero = (dados_certificado.get("registro_numero") or "").strip()
+    livro_numero = (dados_certificado.get("livro_numero") or "").strip()
+    folha = (dados_certificado.get("folha") or "").strip()
+    registrado_por = (dados_certificado.get("registrado_por") or "").strip()
+    amparo_legal = (dados_certificado.get("amparo_legal") or "").strip()
+
+    document.add_page_break()
+    _cabecalho_logo_e_secretaria(document, dados_escola, largura_total_cm=LARGURA_UTIL_CERTIFICADO_CM)
+    document.add_paragraph()
+    _tabela_dados_escola(document, dados_escola)
+    document.add_paragraph()
+
+    tabela_registro = document.add_table(rows=1, cols=2)
+    tabela_registro.style = "Table Grid"
+    _definir_largura_colunas(tabela_registro, [LARGURA_UTIL_CERTIFICADO_CM / 2] * 2)
+    _definir_margens_celulas(tabela_registro)
+
+    cel_amparo, cel_registro = tabela_registro.rows[0].cells
+    cel_amparo.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+    _paragrafo(cel_amparo, "Amparo Legal:", negrito=True)
+    _paragrafo(cel_amparo, amparo_legal)
+
+    cel_registro.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+    _paragrafo(cel_registro, "Registro Nº:", negrito=True)
+    _paragrafo(cel_registro, registro_numero)
+    _paragrafo(cel_registro, "Livro Nº:", negrito=True)
+    _paragrafo(cel_registro, livro_numero)
+    _paragrafo(cel_registro, "Folha:", negrito=True)
+    _paragrafo(cel_registro, folha)
+    _paragrafo(cel_registro, "Registrado por:", negrito=True)
+    _paragrafo(cel_registro, registrado_por)
 
     document.save(caminho_saida)
     return caminho_saida
@@ -1717,18 +1788,42 @@ def gerar_certificado(dados_escola, dados_certificado, caminho_saida):
 
 LARGURA_UTIL_HISTORICO_CM = 18.5  # mesma largura util do retrato (margens estreitas)
 
+SITUACOES_HISTORICO = {"promovido": "PRO", "retido": "RET", "retido_frequencia": "RFR"}
+
+
+def _parse_disciplinas_historico(texto):
+    """Cada linha do campo "Disciplinas" vem como
+    "Disciplina; Nota; Carga Horária; Faltas" - divide em uma lista de
+    dicts, ignorando linhas vazias e completando campos que faltarem."""
+    disciplinas = []
+    for linha in (texto or "").splitlines():
+        linha = linha.strip()
+        if not linha:
+            continue
+        partes = [p.strip() for p in linha.split(";")]
+        partes += [""] * (4 - len(partes))
+        disciplinas.append({
+            "nome": partes[0], "nota": partes[1], "carga_horaria": partes[2], "faltas": partes[3],
+        })
+    return disciplinas
+
 
 def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
     """Gera um Histórico Escolar (.docx) - identificação do aluno + uma
-    tabela com o registro de escolaridade (um ano letivo por linha).
+    tabela detalhada por disciplina em cada ano letivo (nota, carga
+    horária, faltas), igual ao modelo oficial usado pela SEMED Manaus.
 
     dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
-        telefone, email, assinatura_path, cidade.
-    dados_historico: dict com nome_aluno, data_nascimento, nome_mae,
-        nome_pai, naturalidade, nacionalidade, registros (lista de dicts,
-        cada um com ano_letivo, etapa, turma, carga_horaria, resultado -
-        linhas em branco no fim sao ignoradas), data (já formatada por
-        extenso), assinado_por, cargo_assinado_por.
+        telefone, email, cidade.
+    dados_historico: dict com nome_aluno, codigo_aluno, data_nascimento,
+        registro_geral, municipio, naturalidade, nacionalidade, nome_mae,
+        nome_pai, anos (lista de dicts, cada um com ano_letivo, ensino,
+        fase, estabelecimento, situacao ("promovido"/"retido"/
+        "retido_frequencia"), disciplinas - lista de dicts com nome,
+        nota, carga_horaria, faltas - anos sem ano_letivo sao ignorados),
+        amparo_legal, regras (ambos opcionais, texto livre), data (já
+        formatada por extenso), diretor_nome, diretor_portaria,
+        secretario_nome, secretario_portaria.
     """
     document = docx.Document()
     _config_secao(document)
@@ -1743,9 +1838,14 @@ def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
 
     # --- Identificacao do aluno ---
     _linha_campos(document, [
+        ("Código do aluno", dados_historico.get("codigo_aluno", "")),
         ("Nome do aluno", dados_historico.get("nome_aluno", "")),
+    ], larguras=[4.5, 14.0])
+    _linha_campos(document, [
         ("Data de nascimento", dados_historico.get("data_nascimento", "")),
-    ], larguras=[12.5, 6.0])
+        ("Nº Registro Geral", dados_historico.get("registro_geral", "")),
+        ("Município", dados_historico.get("municipio", "")),
+    ], larguras=[5.5, 6.5, 6.5])
     _linha_campos(document, [
         ("Nome da mãe", dados_historico.get("nome_mae", "")),
         ("Nome do pai", dados_historico.get("nome_pai", "")),
@@ -1758,46 +1858,66 @@ def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
     document.add_paragraph()
     _titulo_secao_ficha(document, "REGISTRO DE ESCOLARIDADE", largura_cm=LARGURA_UTIL_HISTORICO_CM)
 
-    # --- Tabela: Ano Letivo | Etapa/Série | Turma | Carga Horária | Resultado Final ---
-    registros = [r for r in (dados_historico.get("registros") or []) if (r.get("ano_letivo") or "").strip()]
+    # --- Tabela: uma linha por disciplina, ANO/ENSINO/FASE/SIT./ESTAB. so
+    # aparecem na primeira linha de cada ano (nao repete nas seguintes,
+    # igual ao modelo real) ---
+    anos = [a for a in (dados_historico.get("anos") or []) if (a.get("ano_letivo") or "").strip()]
 
-    tabela = document.add_table(rows=len(registros) + 1, cols=5)
+    linhas_totais = sum(max(len(a.get("disciplinas") or []), 1) for a in anos)
+    tabela = document.add_table(rows=linhas_totais + 1, cols=9)
     tabela.style = "Table Grid"
-    larguras_tabela = [3.0, 6.0, 3.0, 3.5, 3.0]
+    larguras_tabela = [1.6, 2.6, 1.5, 3.4, 1.3, 1.2, 1.7, 1.3, 3.9]
     _definir_largura_colunas(tabela, larguras_tabela)
     _definir_margens_celulas(tabela)
 
-    cabecalhos = ["Ano Letivo", "Etapa/Série", "Turma", "Carga Horária", "Resultado Final"]
+    cabecalhos = ["Ano", "Ensino", "Fase", "Disciplina", "Nota", "C.H.", "Faltas", "Sit.", "Estab."]
     for celula, texto in zip(tabela.rows[0].cells, cabecalhos):
         celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        _paragrafo(celula, texto, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+        _paragrafo(celula, texto, negrito=True, tamanho=TAM_NORMAL - 1, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
 
-    for i, registro in enumerate(registros):
-        linha_tabela = tabela.rows[i + 1]
-        valores = [
-            registro.get("ano_letivo", ""), registro.get("etapa", ""),
-            registro.get("turma", ""), registro.get("carga_horaria", ""),
-            registro.get("resultado", ""),
-        ]
-        for celula, valor in zip(linha_tabela.cells, valores):
-            celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-            _paragrafo(celula, valor, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    linha_atual = 1
+    for ano in anos:
+        disciplinas = ano.get("disciplinas") or [{}]
+        situacao = SITUACOES_HISTORICO.get(ano.get("situacao"), "")
+        for i, disciplina in enumerate(disciplinas):
+            linha_tabela = tabela.rows[linha_atual]
+            valores = [
+                ano.get("ano_letivo", "") if i == 0 else "",
+                ano.get("ensino", "") if i == 0 else "",
+                ano.get("fase", "") if i == 0 else "",
+                disciplina.get("nome", ""),
+                disciplina.get("nota", ""),
+                disciplina.get("carga_horaria", ""),
+                disciplina.get("faltas", ""),
+                situacao if i == 0 else "",
+                ano.get("estabelecimento", "") if i == 0 else "",
+            ]
+            for celula, valor in zip(linha_tabela.cells, valores):
+                celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+                _paragrafo(celula, valor, tamanho=TAM_NORMAL - 1, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+            linha_atual += 1
+
+    _paragrafo(document, "Legenda:  PRO – Promovido    RET – Retido    RFR – Retido por Frequência",
+               tamanho=TAM_NORMAL - 2)
+
+    # --- Amparo legal / regras (opcional, texto livre por escola) ---
+    amparo_legal = (dados_historico.get("amparo_legal") or "").strip()
+    regras = (dados_historico.get("regras") or "").strip()
+    if amparo_legal or regras:
+        document.add_paragraph()
+        tabela_legal = document.add_table(rows=1, cols=2)
+        tabela_legal.style = "Table Grid"
+        _definir_largura_colunas(tabela_legal, [7.0, 11.5])
+        _definir_margens_celulas(tabela_legal)
+        cel_amparo, cel_regras = tabela_legal.rows[0].cells
+        cel_amparo.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+        _paragrafo(cel_amparo, "Amparo Legal", negrito=True)
+        _paragrafo(cel_amparo, amparo_legal)
+        cel_regras.vertical_alignment = WD_ALIGN_VERTICAL.TOP
+        _paragrafo(cel_regras, "Regras", negrito=True)
+        _paragrafo(cel_regras, regras)
 
     document.add_paragraph()
-    document.add_paragraph()
-
-    if dados_escola.get("assinatura_path"):
-        _imagem_centralizada(document, dados_escola["assinatura_path"], 3.0)
-
-    p_declara = document.add_paragraph()
-    p_declara.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run_declara = p_declara.add_run(
-        "Declaramos, para os devidos fins, que as informações acima refletem "
-        "fielmente os registros escolares constantes nos arquivos desta unidade de ensino.")
-    run_declara.font.name = FONTE
-    run_declara.font.size = Pt(TAM_NORMAL - 1)
-    run_declara.italic = True
-
     document.add_paragraph()
 
     data = (dados_historico.get("data") or "").strip()
@@ -1806,12 +1926,36 @@ def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
 
     document.add_paragraph()
 
-    assinado_por = (dados_historico.get("assinado_por") or "").strip()
-    if assinado_por:
-        _paragrafo(document, assinado_por, negrito=True, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
-        cargo_assina = (dados_historico.get("cargo_assinado_por") or "").strip()
-        if cargo_assina:
-            _paragrafo(document, cargo_assina, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    # --- Assinaturas: Diretor(a) e Secretario(a) lado a lado, cada uma
+    # com a portaria de nomeacao (opcional) acima do nome ---
+    tabela_assinatura = document.add_table(rows=3, cols=2)
+    _remover_bordas_tabela(tabela_assinatura)
+    _definir_largura_colunas(tabela_assinatura, [9.25, 9.25])
+
+    diretor_portaria = (dados_historico.get("diretor_portaria") or "").strip()
+    diretor_nome = (dados_historico.get("diretor_nome") or "").strip()
+    secretario_portaria = (dados_historico.get("secretario_portaria") or "").strip()
+    secretario_nome = (dados_historico.get("secretario_nome") or "").strip()
+
+    _paragrafo(tabela_assinatura.cell(0, 0), diretor_portaria, tamanho=TAM_NORMAL - 1,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    _paragrafo(tabela_assinatura.cell(0, 1), secretario_portaria, tamanho=TAM_NORMAL - 1,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    _linha_com_borda_inferior(tabela_assinatura.cell(1, 0))
+    _linha_com_borda_inferior(tabela_assinatura.cell(1, 1))
+
+    p_dir = _paragrafo(tabela_assinatura.cell(2, 0), diretor_nome or "Diretor(a)",
+                        alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_dir.runs[0].italic = not diretor_nome
+    _paragrafo(tabela_assinatura.cell(2, 0), "DIRETOR(A)", tamanho=TAM_NORMAL - 1,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+
+    p_sec = _paragrafo(tabela_assinatura.cell(2, 1), secretario_nome or "Secretário(a) Escolar",
+                        alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    p_sec.runs[0].italic = not secretario_nome
+    _paragrafo(tabela_assinatura.cell(2, 1), "SECRETÁRIO(A)", tamanho=TAM_NORMAL - 1,
+               alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
 
     document.save(caminho_saida)
     return caminho_saida

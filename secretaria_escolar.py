@@ -2177,18 +2177,43 @@ class App(tk.Tk):
         self.campo_data_certificado.pack(fill="x")
         self._ultima_data_certificado_auto = self.campo_data_certificado.get()
 
-        self.campo_certificado_assinado_por = CampoTexto(
-            cartao, "Assinado por", self.config_escola.get("diretor_nome", ""), largura=50)
-        self.campo_certificado_assinado_por.pack(fill="x")
-        self.campo_certificado_cargo = CampoTexto(
-            cartao, "Cargo", self.config_escola.get("diretor_cargo", ""), largura=30)
-        self.campo_certificado_cargo.pack(fill="x")
+        linha_assinaturas = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_assinaturas.pack(fill="x")
+        self.campo_certificado_secretario = CampoTexto(
+            linha_assinaturas, "Secretário(a)", self.config_escola.get("secretario_nome", ""), largura=30)
+        self.campo_certificado_secretario.pack(side="left", padx=(0, 16))
+        self.campo_certificado_diretor = CampoTexto(
+            linha_assinaturas, "Diretor(a)", self.config_escola.get("diretor_nome", ""), largura=30)
+        self.campo_certificado_diretor.pack(side="left")
 
         tk.Label(cartao,
                  text="Sai com uma borda decorativa ao redor da página, pra dar a cara de\n"
-                      "certificado/diploma.",
+                      "certificado/diploma. Tem 3 assinaturas: Secretário(a), Diretor(a) e o(a)\n"
+                      "próprio(a) aluno(a) como concludente.",
                  bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9),
                  justify="left").pack(anchor="w", pady=(10, 10))
+
+        separador_certificado = tk.Frame(cartao, bg=COR_BORDA, height=1)
+        separador_certificado.pack(fill="x", pady=(4, 12))
+
+        tk.Label(cartao, text="Registro no livro da escola (opcional)",
+                 bg=COR_CARTAO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
+
+        self.campo_certificado_amparo_legal = CampoTexto(
+            cartao, "Amparo legal (ex: Resolução Nº 05/2016 - CME)", largura=60)
+        self.campo_certificado_amparo_legal.pack(fill="x")
+
+        linha_registro = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_registro.pack(fill="x")
+        self.campo_certificado_registro_numero = CampoTexto(linha_registro, "Registro Nº", largura=12)
+        self.campo_certificado_registro_numero.pack(side="left", padx=(0, 16))
+        self.campo_certificado_livro_numero = CampoTexto(linha_registro, "Livro Nº", largura=12)
+        self.campo_certificado_livro_numero.pack(side="left", padx=(0, 16))
+        self.campo_certificado_folha = CampoTexto(linha_registro, "Folha", largura=12)
+        self.campo_certificado_folha.pack(side="left")
+
+        self.campo_certificado_registrado_por = CampoTexto(cartao, "Registrado por", largura=40)
+        self.campo_certificado_registrado_por.pack(fill="x")
 
         btn_gerar = tk.Button(cartao, text="Gerar Certificado (.docx)", command=self._gerar_certificado,
                                bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
@@ -2218,8 +2243,13 @@ class App(tk.Tk):
             "ano_letivo": self.campo_certificado_ano.get(),
             "turma": self.campo_certificado_turma.get(),
             "data": self.campo_data_certificado.get(),
-            "assinado_por": self.campo_certificado_assinado_por.get(),
-            "cargo_assinado_por": self.campo_certificado_cargo.get(),
+            "secretario_nome": self.campo_certificado_secretario.get(),
+            "diretor_nome": self.campo_certificado_diretor.get(),
+            "amparo_legal": self.campo_certificado_amparo_legal.get(),
+            "registro_numero": self.campo_certificado_registro_numero.get(),
+            "livro_numero": self.campo_certificado_livro_numero.get(),
+            "folha": self.campo_certificado_folha.get(),
+            "registrado_por": self.campo_certificado_registrado_por.get(),
         }
 
         nome_sugerido = f"Certificado - {aluno}.docx"
@@ -2268,17 +2298,21 @@ class App(tk.Tk):
         tk.Label(cartao, text="Novo histórico escolar", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
                  font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 16))
 
-        self.campo_historico_aluno = CampoTexto(cartao, "Nome do aluno", largura=50)
-        self.campo_historico_aluno.pack(fill="x")
+        linha_aluno = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_aluno.pack(fill="x")
+        self.campo_historico_codigo_aluno = CampoTexto(linha_aluno, "Código do aluno (opcional)", largura=14)
+        self.campo_historico_codigo_aluno.pack(side="left", padx=(0, 16))
+        self.campo_historico_aluno = CampoTexto(linha_aluno, "Nome do aluno", largura=40)
+        self.campo_historico_aluno.pack(side="left")
 
         linha1 = tk.Frame(cartao, bg=COR_CARTAO)
         linha1.pack(fill="x")
-        self.campo_historico_nascimento = CampoTexto(linha1, "Data de nascimento", largura=16)
+        self.campo_historico_nascimento = CampoTexto(linha1, "Data de nascimento", largura=14)
         self.campo_historico_nascimento.pack(side="left", padx=(0, 16))
-        self.campo_historico_naturalidade = CampoTexto(linha1, "Naturalidade", largura=20)
-        self.campo_historico_naturalidade.pack(side="left", padx=(0, 16))
-        self.campo_historico_nacionalidade = CampoTexto(linha1, "Nacionalidade", "Brasileira", largura=16)
-        self.campo_historico_nacionalidade.pack(side="left")
+        self.campo_historico_registro_geral = CampoTexto(linha1, "Nº Registro Geral (opcional)", largura=18)
+        self.campo_historico_registro_geral.pack(side="left", padx=(0, 16))
+        self.campo_historico_municipio = CampoTexto(linha1, "Município", largura=16)
+        self.campo_historico_municipio.pack(side="left")
 
         linha2 = tk.Frame(cartao, bg=COR_CARTAO)
         linha2.pack(fill="x")
@@ -2287,45 +2321,99 @@ class App(tk.Tk):
         self.campo_historico_pai = CampoTexto(linha2, "Nome do pai", largura=30)
         self.campo_historico_pai.pack(side="left")
 
+        linha3 = tk.Frame(cartao, bg=COR_CARTAO)
+        linha3.pack(fill="x")
+        self.campo_historico_naturalidade = CampoTexto(linha3, "Naturalidade", largura=20)
+        self.campo_historico_naturalidade.pack(side="left", padx=(0, 16))
+        self.campo_historico_nacionalidade = CampoTexto(linha3, "Nacionalidade", "Brasileira", largura=16)
+        self.campo_historico_nacionalidade.pack(side="left")
+
         separador = tk.Frame(cartao, bg=COR_BORDA, height=1)
         separador.pack(fill="x", pady=(12, 12))
 
-        tk.Label(cartao, text="Registro de escolaridade (um ano letivo por linha)",
+        tk.Label(cartao, text="Ano letivo (adicione um por vez)",
                  bg=COR_CARTAO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
 
-        cabecalho_tabela = tk.Frame(cartao, bg=COR_CARTAO)
-        cabecalho_tabela.pack(fill="x")
-        for texto, largura in (("Ano Letivo", 8), ("Etapa/Série", 18), ("Turma", 8),
-                                ("Carga Horária", 12), ("Resultado Final", 16)):
-            tk.Label(cabecalho_tabela, text=texto, bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL,
-                     width=largura, anchor="w").pack(side="left", padx=(0, 4))
+        linha_ano = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_ano.pack(fill="x")
+        self.campo_historico_ano_letivo = CampoTexto(linha_ano, "Ano letivo", largura=10)
+        self.campo_historico_ano_letivo.pack(side="left", padx=(0, 16))
+        self.campo_historico_situacao = CampoOpcao(
+            linha_ano, "Situação",
+            [("promovido", "Promovido"), ("retido", "Retido"),
+             ("retido_frequencia", "Retido por frequência")], largura=20)
+        self.campo_historico_situacao.pack(side="left")
 
-        self.linhas_historico_escolar = []
-        frame_linhas = tk.Frame(cartao, bg=COR_CARTAO)
-        frame_linhas.pack(fill="x", pady=(3, 0))
-        for _ in range(8):
-            linha = tk.Frame(frame_linhas, bg=COR_CARTAO)
-            linha.pack(fill="x", pady=2)
-            campos = {}
-            for chave, largura in (("ano_letivo", 8), ("etapa", 18), ("turma", 8),
-                                    ("carga_horaria", 12), ("resultado", 16)):
-                var = tk.StringVar()
-                tk.Entry(linha, textvariable=var, font=FONTE_PADRAO, width=largura,
-                          relief="solid", bd=1, highlightthickness=1,
-                          highlightbackground=COR_BORDA).pack(side="left", padx=(0, 4))
-                campos[chave] = var
-            self.linhas_historico_escolar.append(campos)
+        linha_ensino = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_ensino.pack(fill="x")
+        self.campo_historico_ensino = CampoTexto(
+            linha_ensino, "Ensino (ex: Ensino Fundamental de 1º ao 5º Ano)", largura=35)
+        self.campo_historico_ensino.pack(side="left", padx=(0, 16))
+        self.campo_historico_fase = CampoTexto(linha_ensino, "Fase/Série (ex: 3º Ano)", largura=16)
+        self.campo_historico_fase.pack(side="left")
+
+        self.campo_historico_estabelecimento = CampoTexto(
+            cartao, "Estabelecimento (escola onde cursou esse ano)", largura=50)
+        self.campo_historico_estabelecimento.pack(fill="x")
+
+        tk.Label(cartao, text="Disciplinas (uma por linha: Disciplina; Nota; Carga Horária; Faltas)",
+                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        self.texto_historico_disciplinas = tk.Text(cartao, height=8, font=FONTE_PADRAO, relief="solid", bd=1,
+                                                     highlightthickness=1, highlightbackground=COR_BORDA,
+                                                     wrap="word")
+        self.texto_historico_disciplinas.pack(fill="x", pady=(3, 10))
+
+        tk.Label(cartao,
+                 text="Exemplo de linha: Matemática; 8,5; 200; 2\n\n"
+                      "Preencha os dados de um ano letivo e clique em \"Gerar\". O programa\n"
+                      "vai perguntar se você quer adicionar outro ano - se disser que sim,\n"
+                      "troque o Ano/Ensino/Fase/Estabelecimento/Disciplinas e clique em\n"
+                      "\"Gerar\" de novo. Repita até adicionar todos; no final ele junta tudo\n"
+                      "num único histórico.",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 10))
+
+        self.anos_acumulados_historico = []
+        self.label_anos_acumulados_historico = tk.Label(
+            cartao, text="", bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left")
+        self.label_anos_acumulados_historico.pack(anchor="w", pady=(0, 8))
+
+        separador2 = tk.Frame(cartao, bg=COR_BORDA, height=1)
+        separador2.pack(fill="x", pady=(0, 12))
+
+        tk.Label(cartao, text="Base legal e assinaturas",
+                 bg=COR_CARTAO, fg=COR_AZUL_ESCURO, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 8))
+
+        self.campo_historico_amparo_legal = CampoTexto(
+            cartao, "Amparo legal (opcional, ex: Resolução Nº 040/2014 - CME)", largura=60)
+        self.campo_historico_amparo_legal.pack(fill="x")
+
+        tk.Label(cartao, text="Regras (opcional)",
+                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
+        self.texto_historico_regras = tk.Text(cartao, height=3, font=FONTE_PADRAO, relief="solid", bd=1,
+                                               highlightthickness=1, highlightbackground=COR_BORDA, wrap="word")
+        self.texto_historico_regras.pack(fill="x", pady=(3, 10))
 
         self.campo_data_historico = CampoTexto(
             cartao, "Local e data", data_por_extenso((self.config_escola.get("cidade") or "").strip()), largura=50)
-        self.campo_data_historico.pack(fill="x", pady=(12, 0))
+        self.campo_data_historico.pack(fill="x")
         self._ultima_data_historico_auto = self.campo_data_historico.get()
 
-        self.campo_historico_assinado_por = CampoTexto(
-            cartao, "Assinado por", self.config_escola.get("secretario_nome", ""), largura=50)
-        self.campo_historico_assinado_por.pack(fill="x")
-        self.campo_historico_cargo = CampoTexto(cartao, "Cargo", "Secretário(a) Escolar", largura=30)
-        self.campo_historico_cargo.pack(fill="x")
+        linha_diretor = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_diretor.pack(fill="x")
+        self.campo_historico_diretor_portaria = CampoTexto(linha_diretor, "Portaria do(a) diretor(a)", largura=18)
+        self.campo_historico_diretor_portaria.pack(side="left", padx=(0, 16))
+        self.campo_historico_diretor_nome = CampoTexto(
+            linha_diretor, "Diretor(a)", self.config_escola.get("diretor_nome", ""), largura=30)
+        self.campo_historico_diretor_nome.pack(side="left")
+
+        linha_secretario = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_secretario.pack(fill="x")
+        self.campo_historico_secretario_portaria = CampoTexto(
+            linha_secretario, "Portaria do(a) secretário(a)", largura=18)
+        self.campo_historico_secretario_portaria.pack(side="left", padx=(0, 16))
+        self.campo_historico_secretario_nome = CampoTexto(
+            linha_secretario, "Secretário(a)", self.config_escola.get("secretario_nome", ""), largura=30)
+        self.campo_historico_secretario_nome.pack(side="left")
 
         btn_gerar = tk.Button(cartao, text="Gerar Histórico Escolar (.docx)", command=self._gerar_historico_escolar,
                                bg=COR_AZUL, fg="white", font=("Segoe UI", 11, "bold"),
@@ -2335,6 +2423,22 @@ class App(tk.Tk):
 
         self.label_status_historico = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
         self.label_status_historico.pack(anchor="w", pady=(8, 0))
+
+    def _atualizar_label_anos_acumulados_historico(self):
+        n = len(self.anos_acumulados_historico)
+        if n == 0:
+            self.label_anos_acumulados_historico.config(text="")
+        else:
+            nomes_anos = ", ".join(a["ano_letivo"] for a in self.anos_acumulados_historico)
+            self.label_anos_acumulados_historico.config(
+                text=f"{n} ano(s) já adicionado(s), aguardando finalizar: {nomes_anos}")
+
+    def _limpar_campos_ano_historico(self):
+        self.campo_historico_ano_letivo.set("")
+        self.campo_historico_ensino.set("")
+        self.campo_historico_fase.set("")
+        self.campo_historico_estabelecimento.set("")
+        self.texto_historico_disciplinas.delete("1.0", "end")
 
     def _gerar_historico_escolar(self):
         if not self.config_escola.get("nome_escola"):
@@ -2349,24 +2453,50 @@ class App(tk.Tk):
             messagebox.showwarning("Campo obrigatório", "Preencha o nome do aluno.")
             return
 
-        registros = []
-        for campos in self.linhas_historico_escolar:
-            ano = campos["ano_letivo"].get().strip()
-            if not ano:
-                continue
-            registros.append({chave: var.get().strip() for chave, var in campos.items()})
+        ano_letivo = self.campo_historico_ano_letivo.get()
+        if not ano_letivo:
+            messagebox.showwarning("Campo obrigatório", "Preencha o Ano letivo.")
+            return
+
+        ano_atual = {
+            "ano_letivo": ano_letivo,
+            "ensino": self.campo_historico_ensino.get(),
+            "fase": self.campo_historico_fase.get(),
+            "estabelecimento": self.campo_historico_estabelecimento.get(),
+            "situacao": self.campo_historico_situacao.get(),
+            "disciplinas": documentos._parse_disciplinas_historico(
+                self.texto_historico_disciplinas.get("1.0", "end")),
+        }
+        self.anos_acumulados_historico.append(ano_atual)
+        self._atualizar_label_anos_acumulados_historico()
+
+        quer_mais = messagebox.askyesno(
+            "Adicionar outro ano?",
+            f"Ano letivo \"{ano_letivo}\" adicionado "
+            f"({len(self.anos_acumulados_historico)} ano(s) até agora).\n\n"
+            "Deseja preencher e adicionar outro ano antes de gerar o arquivo?")
+        if quer_mais:
+            self._limpar_campos_ano_historico()
+            return
 
         dados_historico = {
             "nome_aluno": aluno,
+            "codigo_aluno": self.campo_historico_codigo_aluno.get(),
             "data_nascimento": self.campo_historico_nascimento.get(),
+            "registro_geral": self.campo_historico_registro_geral.get(),
+            "municipio": self.campo_historico_municipio.get(),
             "naturalidade": self.campo_historico_naturalidade.get(),
             "nacionalidade": self.campo_historico_nacionalidade.get(),
             "nome_mae": self.campo_historico_mae.get(),
             "nome_pai": self.campo_historico_pai.get(),
-            "registros": registros,
+            "anos": self.anos_acumulados_historico,
+            "amparo_legal": self.campo_historico_amparo_legal.get(),
+            "regras": self.texto_historico_regras.get("1.0", "end").strip(),
             "data": self.campo_data_historico.get(),
-            "assinado_por": self.campo_historico_assinado_por.get(),
-            "cargo_assinado_por": self.campo_historico_cargo.get(),
+            "diretor_portaria": self.campo_historico_diretor_portaria.get(),
+            "diretor_nome": self.campo_historico_diretor_nome.get(),
+            "secretario_portaria": self.campo_historico_secretario_portaria.get(),
+            "secretario_nome": self.campo_historico_secretario_nome.get(),
         }
 
         nome_sugerido = f"Historico Escolar - {aluno}.docx"
@@ -2376,6 +2506,10 @@ class App(tk.Tk):
             defaultextension=".docx",
             filetypes=[("Documento Word", "*.docx")])
         if not caminho:
+            # cancelou o salvamento - desfaz a adicao desse ano pra nao
+            # duplicar se a pessoa clicar em Gerar de novo
+            self.anos_acumulados_historico.pop()
+            self._atualizar_label_anos_acumulados_historico()
             return
 
         try:
@@ -2383,6 +2517,10 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror("Erro ao gerar histórico escolar", str(e))
             return
+
+        self.anos_acumulados_historico = []
+        self._atualizar_label_anos_acumulados_historico()
+        self._limpar_campos_ano_historico()
 
         self.label_status_historico.config(text=f"Histórico escolar gerado: {os.path.basename(caminho)}")
         if messagebox.askyesno(
