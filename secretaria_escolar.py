@@ -11,6 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 
 import documentos
 import relatorio_bolsa_familia
+import licenca
 
 PASTA_BASE = os.path.dirname(os.path.abspath(__file__))
 PASTA_DADOS = os.path.join(PASTA_BASE, "dados_escola")
@@ -67,6 +68,18 @@ def copiar_imagem_para_projeto(caminho_origem, nome_destino):
     destino = os.path.join(PASTA_IMAGENS, f"{nome_destino}{ext}")
     shutil.copyfile(caminho_origem, destino)
     return destino
+
+
+def requer_licenca(metodo_gerar):
+    """Decorador pros métodos "_gerar_X" das telas de documento - se o
+    teste grátis de 7 dias já venceu e não tem licença ativa, manda pra
+    tela de licença em vez de gerar o documento."""
+    def wrapper(self, *args, **kwargs):
+        if not licenca.licenca_valida():
+            self._ir_para("licenca")
+            return
+        return metodo_gerar(self, *args, **kwargs)
+    return wrapper
 
 
 class CampoTexto:
@@ -253,6 +266,7 @@ class App(tk.Tk):
         self.configure(bg=COR_FUNDO)
 
         self.config_escola = carregar_config()
+        licenca.garantir_licenca_iniciada()
 
         self._montar_topo()
         self._montar_rodape()
@@ -302,6 +316,23 @@ class App(tk.Tk):
             "#8A8880", "#F1EFE8",
         ).pack(side="right", padx=20, pady=7)
 
+        self.label_licenca_rodape = tk.Label(
+            rodape, text="", bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9))
+        self.label_licenca_rodape.pack(side="left", padx=(0, 0), pady=7)
+        self._atualizar_label_licenca_rodape()
+
+    def _atualizar_label_licenca_rodape(self):
+        if licenca.licenca_ativa():
+            self.label_licenca_rodape.config(text="✓ Licença ativa", fg=COR_VERDE)
+            return
+        dias = licenca.dias_restantes_teste()
+        if dias > 0:
+            self.label_licenca_rodape.config(
+                text=f"Teste grátis: faltam {dias} dia(s)", fg=COR_TEXTO_FRACO)
+        else:
+            self.label_licenca_rodape.config(
+                text="Teste grátis expirado - licença necessária", fg="#B3261E")
+
     def _montar_paginas(self):
         self.container = tk.Frame(self, bg=COR_FUNDO)
         self.container.pack(fill="both", expand=True, padx=14, pady=14)
@@ -311,7 +342,7 @@ class App(tk.Tk):
         self.paginas = {}
         for nome in ("home", "escola", "memorando", "oficio", "declaracao", "capa_livro", "ficha_matricula",
                      "lista_reuniao", "lista_frequencia", "bolsa", "justificativa_faltas", "certificado",
-                     "historico_escolar"):
+                     "historico_escolar", "licenca"):
             frame = tk.Frame(self.container, bg=COR_FUNDO)
             frame.grid(row=0, column=0, sticky="nsew")
             self.paginas[nome] = frame
@@ -329,8 +360,10 @@ class App(tk.Tk):
         self._montar_pagina_justificativa_faltas()
         self._montar_pagina_certificado()
         self._montar_pagina_historico_escolar()
+        self._montar_pagina_licenca()
 
     def _ir_para(self, nome, primeira_vez=False):
+        self._atualizar_label_licenca_rodape()
         if nome == "home":
             self._atualizar_saudacao_home()
         if nome == "escola":
@@ -350,6 +383,8 @@ class App(tk.Tk):
             self._atualizar_data_auto(self.campo_data_certificado, "_ultima_data_certificado_auto")
         if nome == "historico_escolar":
             self._atualizar_data_auto(self.campo_data_historico, "_ultima_data_historico_auto")
+        if nome == "licenca":
+            self._atualizar_mensagem_licenca()
         self.paginas[nome].tkraise()
 
     def _atualizar_data_auto(self, campo, atributo_ultimo):
@@ -360,6 +395,37 @@ class App(tk.Tk):
             novo_valor = data_por_extenso(cidade)
             campo.set(novo_valor)
             setattr(self, atributo_ultimo, novo_valor)
+
+    # ---------------- Licença ----------------
+    def _montar_pagina_licenca(self):
+        pagina = self.paginas["licenca"]
+
+        cartao = tk.Frame(pagina, bg=COR_CARTAO, padx=32, pady=32)
+        cartao.pack(fill="x", padx=4, pady=4)
+
+        tk.Label(cartao, text="🔒 Licença necessária", bg=COR_CARTAO, fg=COR_AZUL_ESCURO,
+                 font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(0, 12))
+
+        self.label_licenca_mensagem = tk.Label(
+            cartao, text="", bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_PADRAO,
+            justify="left", wraplength=500)
+        self.label_licenca_mensagem.pack(anchor="w", pady=(0, 16))
+
+        tk.Label(cartao,
+                 text="O pagamento da licença ainda não está disponível dentro do programa.\n"
+                      "Fale com o suporte pra saber como assinar.",
+                 bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9),
+                 justify="left").pack(anchor="w")
+
+    def _atualizar_mensagem_licenca(self):
+        dias = licenca.dias_restantes_teste()
+        if dias > 0:
+            texto = (f"Seu período de teste grátis ainda tem {dias} dia(s). "
+                      "Esta tela não deveria ter aparecido - avise o suporte se isso acontecer de novo.")
+        else:
+            texto = ("Seu período de teste grátis de 7 dias terminou. Para continuar gerando "
+                      "documentos, é preciso adquirir a licença completa do programa.")
+        self.label_licenca_mensagem.config(text=texto)
 
     # ---------------- Início (escolher documento) ----------------
     def _montar_pagina_home(self):
@@ -667,6 +733,7 @@ class App(tk.Tk):
         self.label_status_memo = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
         self.label_status_memo.pack(anchor="w", pady=(8, 0))
 
+    @requer_licenca
     def _gerar_memorando(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -805,6 +872,7 @@ class App(tk.Tk):
         self.label_status_oficio = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
         self.label_status_oficio.pack(anchor="w", pady=(8, 0))
 
+    @requer_licenca
     def _gerar_oficio(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -964,6 +1032,7 @@ class App(tk.Tk):
         self.label_status_declaracao = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
         self.label_status_declaracao.pack(anchor="w", pady=(8, 0))
 
+    @requer_licenca
     def _gerar_declaracao(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -1082,6 +1151,7 @@ class App(tk.Tk):
         self.label_status_capa_livro = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
         self.label_status_capa_livro.pack(anchor="w", pady=(8, 0))
 
+    @requer_licenca
     def _gerar_capa_livro(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -1337,6 +1407,7 @@ class App(tk.Tk):
                                                        font=FONTE_PADRAO)
         self.label_status_ficha_matricula.pack(anchor="w", pady=(8, 0))
 
+    @requer_licenca
     def _gerar_ficha_matricula(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -1518,6 +1589,7 @@ class App(tk.Tk):
         self.campo_reuniao_turma.set("")
         self.texto_reuniao_nomes.delete("1.0", "end")
 
+    @requer_licenca
     def _gerar_lista_reuniao(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -1698,6 +1770,7 @@ class App(tk.Tk):
         self.campo_freq_professor.set("")
         self.texto_freq_nomes.delete("1.0", "end")
 
+    @requer_licenca
     def _gerar_lista_frequencia(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -1904,6 +1977,7 @@ class App(tk.Tk):
         self.texto_log_bolsa.see("end")
         self.texto_log_bolsa.config(state="disabled")
 
+    @requer_licenca
     def _gerar_relatorio_bolsa(self):
         pastas = list(self.lista_pastas_bolsa.get(0, "end"))
         arquivo_lista = self.var_lista_bolsa.get().strip()
@@ -2081,6 +2155,7 @@ class App(tk.Tk):
         self.label_status_justificativa = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
         self.label_status_justificativa.pack(anchor="w", pady=(8, 0))
 
+    @requer_licenca
     def _gerar_justificativa_faltas(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -2224,6 +2299,7 @@ class App(tk.Tk):
         self.label_status_certificado = tk.Label(cartao, text="", bg=COR_CARTAO, fg=COR_VERDE, font=FONTE_PADRAO)
         self.label_status_certificado.pack(anchor="w", pady=(8, 0))
 
+    @requer_licenca
     def _gerar_certificado(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
@@ -2482,6 +2558,7 @@ class App(tk.Tk):
         self._atualizar_label_disciplinas_acumuladas_historico()
         self._limpar_campos_disciplina_historico()
 
+    @requer_licenca
     def _gerar_historico_escolar(self):
         if not self.config_escola.get("nome_escola"):
             messagebox.showwarning(
