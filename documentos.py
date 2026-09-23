@@ -1787,25 +1787,9 @@ def gerar_certificado(dados_escola, dados_certificado, caminho_saida):
 
 
 LARGURA_UTIL_HISTORICO_CM = 18.5  # mesma largura util do retrato (margens estreitas)
+TAM_TABELA_HISTORICO = 9  # fonte pequena de proposito - precisa caber varios anos letivos
 
 SITUACOES_HISTORICO = {"promovido": "PRO", "retido": "RET", "retido_frequencia": "RFR"}
-
-
-def _parse_disciplinas_historico(texto):
-    """Cada linha do campo "Disciplinas" vem como
-    "Disciplina; Nota; Carga Horária; Faltas" - divide em uma lista de
-    dicts, ignorando linhas vazias e completando campos que faltarem."""
-    disciplinas = []
-    for linha in (texto or "").splitlines():
-        linha = linha.strip()
-        if not linha:
-            continue
-        partes = [p.strip() for p in linha.split(";")]
-        partes += [""] * (4 - len(partes))
-        disciplinas.append({
-            "nome": partes[0], "nota": partes[1], "carga_horaria": partes[2], "faltas": partes[3],
-        })
-    return disciplinas
 
 
 def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
@@ -1816,8 +1800,8 @@ def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
     dados_escola: dict com nome_escola, secretaria, logo_path, endereco,
         telefone, email, cidade.
     dados_historico: dict com nome_aluno, codigo_aluno, data_nascimento,
-        registro_geral, municipio, naturalidade, nacionalidade, nome_mae,
-        nome_pai, anos (lista de dicts, cada um com ano_letivo, ensino,
+        registro_geral, municipio, naturalidade, nacionalidade,
+        anos (lista de dicts, cada um com ano_letivo, ensino,
         fase, estabelecimento, situacao ("promovido"/"retido"/
         "retido_frequencia"), disciplinas - lista de dicts com nome,
         nota, carga_horaria, faltas - anos sem ano_letivo sao ignorados),
@@ -1847,10 +1831,6 @@ def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
         ("Município", dados_historico.get("municipio", "")),
     ], larguras=[5.5, 6.5, 6.5])
     _linha_campos(document, [
-        ("Nome da mãe", dados_historico.get("nome_mae", "")),
-        ("Nome do pai", dados_historico.get("nome_pai", "")),
-    ], larguras=[9.25, 9.25])
-    _linha_campos(document, [
         ("Naturalidade", dados_historico.get("naturalidade", "")),
         ("Nacionalidade", dados_historico.get("nacionalidade", "")),
     ], larguras=[9.25, 9.25])
@@ -1868,12 +1848,15 @@ def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
     tabela.style = "Table Grid"
     larguras_tabela = [1.6, 2.6, 1.5, 3.4, 1.3, 1.2, 1.7, 1.3, 3.9]
     _definir_largura_colunas(tabela, larguras_tabela)
-    _definir_margens_celulas(tabela)
+    # Margens bem apertadas e fonte reduzida - com muitos anos letivos
+    # lançados (ex: 9 anos x varias disciplinas), cada centimetro por
+    # linha conta pra nao estourar em paginas demais.
+    _definir_margens_celulas(tabela, cima_cm=0.03, baixo_cm=0.03, esquerda_cm=0.08, direita_cm=0.08)
 
     cabecalhos = ["Ano", "Ensino", "Fase", "Disciplina", "Nota", "C.H.", "Faltas", "Sit.", "Estab."]
     for celula, texto in zip(tabela.rows[0].cells, cabecalhos):
         celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        _paragrafo(celula, texto, negrito=True, tamanho=TAM_NORMAL - 1, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+        _paragrafo(celula, texto, negrito=True, tamanho=TAM_TABELA_HISTORICO, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
 
     linha_atual = 1
     for ano in anos:
@@ -1894,7 +1877,7 @@ def gerar_historico_escolar(dados_escola, dados_historico, caminho_saida):
             ]
             for celula, valor in zip(linha_tabela.cells, valores):
                 celula.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-                _paragrafo(celula, valor, tamanho=TAM_NORMAL - 1, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+                _paragrafo(celula, valor, tamanho=TAM_TABELA_HISTORICO, alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
             linha_atual += 1
 
     _paragrafo(document, "Legenda:  PRO – Promovido    RET – Retido    RFR – Retido por Frequência",

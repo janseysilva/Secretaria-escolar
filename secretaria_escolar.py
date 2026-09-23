@@ -2314,13 +2314,6 @@ class App(tk.Tk):
         self.campo_historico_municipio = CampoTexto(linha1, "Município", largura=16)
         self.campo_historico_municipio.pack(side="left")
 
-        linha2 = tk.Frame(cartao, bg=COR_CARTAO)
-        linha2.pack(fill="x")
-        self.campo_historico_mae = CampoTexto(linha2, "Nome da mãe", largura=30)
-        self.campo_historico_mae.pack(side="left", padx=(0, 16))
-        self.campo_historico_pai = CampoTexto(linha2, "Nome do pai", largura=30)
-        self.campo_historico_pai.pack(side="left")
-
         linha3 = tk.Frame(cartao, bg=COR_CARTAO)
         linha3.pack(fill="x")
         self.campo_historico_naturalidade = CampoTexto(linha3, "Naturalidade", largura=20)
@@ -2356,20 +2349,38 @@ class App(tk.Tk):
             cartao, "Estabelecimento (escola onde cursou esse ano)", largura=50)
         self.campo_historico_estabelecimento.pack(fill="x")
 
-        tk.Label(cartao, text="Disciplinas (uma por linha: Disciplina; Nota; Carga Horária; Faltas)",
-                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w")
-        self.texto_historico_disciplinas = tk.Text(cartao, height=8, font=FONTE_PADRAO, relief="solid", bd=1,
-                                                     highlightthickness=1, highlightbackground=COR_BORDA,
-                                                     wrap="word")
-        self.texto_historico_disciplinas.pack(fill="x", pady=(3, 10))
+        tk.Label(cartao, text="Disciplinas deste ano letivo",
+                 bg=COR_CARTAO, fg=COR_TEXTO, font=FONTE_LABEL).pack(anchor="w", pady=(4, 0))
+
+        linha_disciplina = tk.Frame(cartao, bg=COR_CARTAO)
+        linha_disciplina.pack(fill="x")
+        self.campo_historico_disciplina_nome = CampoTexto(linha_disciplina, "Disciplina", largura=22)
+        self.campo_historico_disciplina_nome.pack(side="left", padx=(0, 12))
+        self.campo_historico_disciplina_nota = CampoTexto(linha_disciplina, "Nota", largura=8)
+        self.campo_historico_disciplina_nota.pack(side="left", padx=(0, 12))
+        self.campo_historico_disciplina_ch = CampoTexto(linha_disciplina, "Carga Horária", largura=10)
+        self.campo_historico_disciplina_ch.pack(side="left", padx=(0, 12))
+        self.campo_historico_disciplina_faltas = CampoTexto(linha_disciplina, "Faltas", largura=8)
+        self.campo_historico_disciplina_faltas.pack(side="left")
+
+        btn_add_disciplina = tk.Button(
+            cartao, text="+ Adicionar disciplina", command=self._adicionar_disciplina_historico,
+            bg="#E3F2ED", fg=COR_AZUL_ESCURO, font=("Segoe UI", 9, "bold"),
+            activebackground="#CFEAE0", activeforeground=COR_AZUL_ESCURO,
+            relief="flat", padx=12, pady=6, cursor="hand2")
+        btn_add_disciplina.pack(anchor="w", pady=(6, 0))
+
+        self.disciplinas_acumuladas_historico = []
+        self.label_disciplinas_acumuladas_historico = tk.Label(
+            cartao, text="", bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left")
+        self.label_disciplinas_acumuladas_historico.pack(anchor="w", pady=(6, 10))
 
         tk.Label(cartao,
-                 text="Exemplo de linha: Matemática; 8,5; 200; 2\n\n"
-                      "Preencha os dados de um ano letivo e clique em \"Gerar\". O programa\n"
-                      "vai perguntar se você quer adicionar outro ano - se disser que sim,\n"
-                      "troque o Ano/Ensino/Fase/Estabelecimento/Disciplinas e clique em\n"
-                      "\"Gerar\" de novo. Repita até adicionar todos; no final ele junta tudo\n"
-                      "num único histórico.",
+                 text="Preencha os dados de um ano letivo, adicione cada disciplina e\n"
+                      "clique em \"Gerar\". O programa vai perguntar se você quer\n"
+                      "adicionar outro ano - se disser que sim, troque o Ano/Ensino/Fase/\n"
+                      "Estabelecimento/Disciplinas e clique em \"Gerar\" de novo. Repita até\n"
+                      "adicionar todos; no final ele junta tudo num único histórico.",
                  bg=COR_CARTAO, fg=COR_TEXTO_FRACO, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 10))
 
         self.anos_acumulados_historico = []
@@ -2433,12 +2444,43 @@ class App(tk.Tk):
             self.label_anos_acumulados_historico.config(
                 text=f"{n} ano(s) já adicionado(s), aguardando finalizar: {nomes_anos}")
 
+    def _atualizar_label_disciplinas_acumuladas_historico(self):
+        n = len(self.disciplinas_acumuladas_historico)
+        if n == 0:
+            self.label_disciplinas_acumuladas_historico.config(text="")
+        else:
+            nomes = ", ".join(d["nome"] for d in self.disciplinas_acumuladas_historico)
+            self.label_disciplinas_acumuladas_historico.config(
+                text=f"{n} disciplina(s) adicionada(s) neste ano: {nomes}")
+
+    def _limpar_campos_disciplina_historico(self):
+        self.campo_historico_disciplina_nome.set("")
+        self.campo_historico_disciplina_nota.set("")
+        self.campo_historico_disciplina_ch.set("")
+        self.campo_historico_disciplina_faltas.set("")
+
+    def _adicionar_disciplina_historico(self):
+        nome = self.campo_historico_disciplina_nome.get()
+        if not nome:
+            messagebox.showwarning("Campo obrigatório", "Preencha o nome da disciplina.")
+            return
+        self.disciplinas_acumuladas_historico.append({
+            "nome": nome,
+            "nota": self.campo_historico_disciplina_nota.get(),
+            "carga_horaria": self.campo_historico_disciplina_ch.get(),
+            "faltas": self.campo_historico_disciplina_faltas.get(),
+        })
+        self._atualizar_label_disciplinas_acumuladas_historico()
+        self._limpar_campos_disciplina_historico()
+
     def _limpar_campos_ano_historico(self):
         self.campo_historico_ano_letivo.set("")
         self.campo_historico_ensino.set("")
         self.campo_historico_fase.set("")
         self.campo_historico_estabelecimento.set("")
-        self.texto_historico_disciplinas.delete("1.0", "end")
+        self.disciplinas_acumuladas_historico = []
+        self._atualizar_label_disciplinas_acumuladas_historico()
+        self._limpar_campos_disciplina_historico()
 
     def _gerar_historico_escolar(self):
         if not self.config_escola.get("nome_escola"):
@@ -2464,8 +2506,7 @@ class App(tk.Tk):
             "fase": self.campo_historico_fase.get(),
             "estabelecimento": self.campo_historico_estabelecimento.get(),
             "situacao": self.campo_historico_situacao.get(),
-            "disciplinas": documentos._parse_disciplinas_historico(
-                self.texto_historico_disciplinas.get("1.0", "end")),
+            "disciplinas": self.disciplinas_acumuladas_historico,
         }
         self.anos_acumulados_historico.append(ano_atual)
         self._atualizar_label_anos_acumulados_historico()
@@ -2487,8 +2528,6 @@ class App(tk.Tk):
             "municipio": self.campo_historico_municipio.get(),
             "naturalidade": self.campo_historico_naturalidade.get(),
             "nacionalidade": self.campo_historico_nacionalidade.get(),
-            "nome_mae": self.campo_historico_mae.get(),
-            "nome_pai": self.campo_historico_pai.get(),
             "anos": self.anos_acumulados_historico,
             "amparo_legal": self.campo_historico_amparo_legal.get(),
             "regras": self.texto_historico_regras.get("1.0", "end").strip(),
